@@ -1,1 +1,64 @@
 /* You can add global styles to this file, and also import other style files */
+@import "tailwindcss";
+
+@layer base {
+  html, body {
+    height: 100%;
+    margin: 0;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Hidden on normal screen view */
+#print-portal {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 8mm 10mm;
+  }
+
+  /* 1. Hide the entire Angular SPA root */
+  maranth-root {
+    display: none !important;
+  }
+
+  /* 2. Show ONLY the dedicated print portal */
+  #print-portal {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    overflow: visible !important;
+  }
+
+  /* Clean print sheet styling */
+  #print-portal .print-sheet {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  #print-portal .thermal-receipt {
+    display: block !important;
+    width: 72mm !important;
+    max-width: 72mm !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  /* Avoid mid-line breaks */
+  table, tr, td, th, canvas, img {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}

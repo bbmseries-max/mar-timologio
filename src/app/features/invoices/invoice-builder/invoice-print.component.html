@@ -1,0 +1,101 @@
+<!-- src/app/features/invoicing/components/invoice-print/invoice-print.component.html -->
+<div class="print-container bg-white text-slate-800 font-sans text-xs leading-normal">
+  <!-- Header: Issuer Branding & Metadata -->
+  <div class="flex justify-between items-start border-b border-slate-900 pb-4 mb-4">
+    <div>
+      <h1 class="text-xl font-bold tracking-tight text-slate-900 uppercase">Maranth IKE</h1>
+      <p class="font-medium text-slate-700">Τεχνολογικές Υπηρεσίες & Λογισμικό</p>
+      <p>Α.Φ.Μ.: 801234567 — Δ.Ο.Υ.: ΧΑΛΑΝΔΡΙΟΥ — Αρ. Γ.Ε.Μ.Η.: 154823901000</p>
+      <p>Λεωφ. Κηφισίας 200, 15231 Χαλάνδρι, Αθήνα</p>
+      <p>Τηλ: +30 210 1234567 | info@maranth.gr</p>
+    </div>
+    <div class="text-right">
+      <div class="inline-block bg-slate-100 border border-slate-300 px-3 py-1.5 rounded text-center">
+        <span class="block text-[10px] uppercase font-semibold text-slate-500">Παραστατικο</span>
+        <span class="text-sm font-extrabold text-slate-900">ΤΙΜΟΛΟΓΙΟ ΠΩΛΗΣΗΣ (1.1)</span>
+      </div>
+      <div class="mt-2 text-right">
+        <p><span class="font-semibold">Σειρά:</span> Α | <span class="font-semibold">Αριθμός:</span> 101</p>
+        <p><span class="font-semibold">Ημερομηνία:</span> 05/10/2026</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recipient / Counterpart Grid -->
+  <div class="border border-slate-200 rounded p-3 mb-4 bg-slate-50">
+    <h3 class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Στοιχεια Ληπτη</h3>
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <p class="font-bold text-sm text-slate-900">ΠΑΠΑΔΟΠΟΥΛΟΣ Α.Ε.Β.Ε.</p>
+        <p>Εμπόριο & Εισαγωγές Εξοπλισμού</p>
+        <p>Ερμού 15, 10563 Αθήνα</p>
+      </div>
+      <div class="text-right">
+        <p><span class="font-semibold">Α.Φ.Μ.:</span> 094123456</p>
+        <p><span class="font-semibold">Δ.Ο.Υ.:</span> ΦΑΕ ΑΘΗΝΩΝ</p>
+        <p><span class="font-semibold">Τρόπος Πληρωμής:</span> Τραπεζική Κατάθεση</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Line Items Table -->
+  <table class="w-full border-collapse mb-4 text-left">
+    <thead>
+      <tr class="border-b border-slate-900 text-[10px] uppercase font-bold text-slate-600">
+        <th class="py-1">#</th>
+        <th class="py-1">Περιγραφη Ειδους</th>
+        <th class="py-1 text-right">Ποσ.</th>
+        <th class="py-1 text-right">Τιμη Μον.</th>
+        <th class="py-1 text-right">Εκπτ. %</th>
+        <th class="py-1 text-right">Καθαρη Αξια</th>
+        <th class="py-1 text-right">ΦΠΑ %</th>
+        <th class="py-1 text-right">Συνολο</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-200">
+      <tr>
+        <td class="py-1.5 font-mono">1</td>
+        <td class="py-1.5">Maranth Cloud SaaS Subscription (Annual)</td>
+        <td class="py-1.5 text-right font-mono">1.00</td>
+        <td class="py-1.5 text-right font-mono">1,200.00 €</td>
+        <td class="py-1.5 text-right font-mono">0%</td>
+        <td class="py-1.5 text-right font-mono">1,200.00 €</td>
+        <td class="py-1.5 text-right font-mono">24%</td>
+        <td class="py-1.5 text-right font-mono font-semibold">1,488.00 €</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Fiscal Summary & AADE QR Signature Footer -->
+  <div class="flex justify-between items-end border-t border-slate-900 pt-3">
+    <!-- Official AADE QR & MARK Block -->
+    <div class="flex items-center gap-3">
+      <div class="w-24 h-24 border border-slate-300 p-1 bg-white">
+        <!-- Render SVG/Canvas QR using document.aadeData.qrCodeUrl -->
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://www.aade.gr/mydata/verify" alt="AADE QR" class="w-full h-full" />
+      </div>
+      <div class="text-[10px] space-y-0.5">
+        <p class="font-bold text-slate-900">ΣΤΟΙΧΕΙΑ myDATA AADE</p>
+        <p><span class="font-semibold">MARK:</span> 400008923489123</p>
+        <p><span class="font-semibold">UID:</span> 98F1BC72D4314E9F88A12450C294D024</p>
+        <p class="text-slate-500 italic">Έλεγχος εγκυρότητας μέσω σάρωσης QR</p>
+      </div>
+    </div>
+
+    <!-- Totals Table -->
+    <div class="w-64 space-y-1 text-right">
+      <div class="flex justify-between text-slate-600">
+        <span>Καθαρή Αξία:</span>
+        <span class="font-mono font-medium">1,200.00 €</span>
+      </div>
+      <div class="flex justify-between text-slate-600">
+        <span>Φ.Π.Α. (24%):</span>
+        <span class="font-mono font-medium">288.00 €</span>
+      </div>
+      <div class="flex justify-between text-sm font-bold text-slate-900 border-t border-slate-300 pt-1">
+        <span>Τελικό Πληρωτέο:</span>
+        <span class="font-mono text-base">1,488.00 €</span>
+      </div>
+    </div>
+  </div>
+</div>
