@@ -1,71 +1,72 @@
-import { Injectable, NgZone, inject } from '@angular/core';
-import { Subject, Observable } from 'rxjs';
-import { HandoverCartPayload } from '../models/cart-handover.models';
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+import { ExternalDocumentHandover } from '../models/handover.model';
 
-@Injectable({ providedIn: 'root' })
+@Injectable({
+  providedIn: 'root'
+})
 export class CartBridgeService {
-  private readonly ngZone = inject(NgZone);
-  private readonly CHANNEL_NAME = 'maranth_cart_handover_bus';
-  private broadcastChannel: BroadcastChannel | null = null;
-
-  private readonly cartSubject = new Subject<HandoverCartPayload>();
-
-  /**
-   * Stream of incoming carts from any source (BroadcastChannel, postMessage, DeepLink)
-   */
-  public readonly cart$: Observable<HandoverCartPayload> = this.cartSubject.asObservable();
+  private readonly cartSubject = new BehaviorSubject<ExternalDocumentHandover | null>(null);
+  public readonly cart$ = this.cartSubject.asObservable();
 
   constructor() {
-    this.initBroadcastChannel();
-    this.initWindowMessageListener();
+    this.initWindowListener();
   }
 
-  private initBroadcastChannel(): void {
-    if (typeof BroadcastChannel !== 'undefined') {
-      this.broadcastChannel = new BroadcastChannel(this.CHANNEL_NAME);
-      this.broadcastChannel.onmessage = (event: MessageEvent<HandoverCartPayload>) => {
-        if (event.data && Array.isArray(event.data.items)) {
-          // Run inside Angular zone so the UI updates immediately
-          this.ngZone.run(() => {
-            this.cartSubject.next(event.data);
-          });
-        }
-      };
-    }
-  }
+  private initWindowListener(): void {
+    window.addEventListener('message', (event: MessageEvent) => {
+      // Validate origin: Localhost & Vercel Production
+      const allowedOrigins = [
+  'http://localhost:4200',
+  'http://127.0.0.1:4200',
+  'https://maranth.vercel.app',
+];
 
-  private initWindowMessageListener(): void {
-    if (typeof window !== 'undefined') {
-      window.addEventListener('message', (event) => {
-        if (event.data?.type === 'MARANTH_LOAD_CART' && event.data.payload) {
-          this.ngZone.run(() => {
-            this.cartSubject.next(event.data.payload);
-          });
+const isAllowed = allowedOrigins.some(origin => event.origin === origin || event.origin.startsWith(origin));
+if (!isAllowed) return;
+      const data = event.data;
+      if (!data) return;
+
+      // Handle handover from Market POS
+      if (data.type === 'MARANTH_HANDOVER_REQUEST' || data.type === 'MARANTH_CART_HANDOVER') {
+        const payload = data.payload || data;
+        const correlationId = payload.messageId || data.correlationId;
+
+        // 1. Reply with the exact ACK required by Port 4200's ackPromise
+        if (event.source && 'postMessage' in event.source) {
+          (event.source as Window).postMessage(
+            {
+              type: 'MARANTH_HANDOVER_ACK',
+              correlationId: correlationId,
+              status: 'ACCEPTED',
+            },
+            event.origin
+          );
         }
-      });
-    }
+
+        // 2. Ingest payload into RxJS Subject for InvoiceBuilder
+        console.log('[CartBridge] Accepted handover:', payload);
+        this.cartSubject.next(payload);
+      }
+    });
   }
 
   public checkUrlPayload(): void {
-    if (typeof window === 'undefined') return;
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const raw = urlParams.get('handover') || urlParams.get('data');
+    if (raw) {
+      const decodedJson = decodeURIComponent(escape(atob(decodeURIComponent(raw))));
+      const parsed = JSON.parse(decodedJson);
+      
+      console.log('[CartBridge] Successfully loaded payload via URL parameter:', parsed);
+      this.cartSubject.next(parsed);
 
-    try {
-      const hash = window.location.hash;
-      if (hash && hash.includes('cart=')) {
-        const base64Data = hash.split('cart=')[1];
-        if (base64Data) {
-          const jsonString = decodeURIComponent(atob(base64Data));
-          const parsed: HandoverCartPayload = JSON.parse(jsonString);
-          if (parsed && Array.isArray(parsed.items)) {
-            window.history.replaceState(null, '', window.location.pathname + window.location.search);
-            this.ngZone.run(() => {
-              this.cartSubject.next(parsed);
-            });
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to parse URL cart handover payload:', err);
+      // Clean the URL so refreshing doesn't re-trigger
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
+  } catch (err) {
+    console.warn('[CartBridge] Failed to parse URL payload parameter:', err);
   }
+}
 }

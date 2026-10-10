@@ -1,8 +1,10 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, of, throwError } from 'rxjs';
-import { map, catchError, delay } from 'rxjs/operators';
+import { Observable, from, of, throwError } from 'rxjs';
+import { switchMap, catchError, delay } from 'rxjs/operators';
 import { isValidGreekAfm } from '../utils/fiscal-engine';
+import { LocalDbService } from './local-db.service';
+import { AuthTenantService } from './auth-tenant.service';
 
 export interface GsisCompanyRecord {
   afm: string;
@@ -15,19 +17,24 @@ export interface GsisCompanyRecord {
   postalZipCode: string;
   postalAreaDescription: string;
   firmActivationDate?: string;
-  isNormalVatRegime: boolean; // false if exempt or special regime
-  active: boolean; // True if company is active / not dissolved
+  isNormalVatRegime: boolean;
+  active: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
 export class GsisLookupService {
+  private readonly db = inject(LocalDbService);
+  private readonly auth = inject(AuthTenantService);
   private readonly http = inject(HttpClient);
-  // In production, points to your Maranth Backend API endpoint:
   private readonly apiEndpoint = '/api/gsis/lookup';
 
   /**
    * Performs an automated lookup for an AFM.
-   * Runs local Modulo-11 pre-validation first.
+   * Priority:
+   * 1. Own Store Settings in Dexie
+   * 2. Saved Customers / Suppliers in Dexie
+   * 3. Backend GSIS Proxy (if available)
+   * 4. Offline Fallback
    */
   public lookupAfm(afm: string): Observable<GsisCompanyRecord> {
     const cleanAfm = (afm || '').trim();
@@ -36,66 +43,88 @@ export class GsisLookupService {
       return throwError(() => new Error('Το Α.Φ.Μ. δεν είναι αριθμητικά έγκυρο (Modulo 11).'));
     }
 
-    // Call the backend proxy with query parameter
-    return this.http.get<GsisCompanyRecord>(`${this.apiEndpoint}?afm=${cleanAfm}`).pipe(
-      catchError((error) => {
-        console.warn('Backend GSIS proxy unreachable. Falling back to local offline dictionary / mock simulation.', error);
-        return this.getMockFallbackRecord(cleanAfm);
+    return from(this.checkLocalDexieStorage(cleanAfm)).pipe(
+      switchMap((localRecord) => {
+        // If found in local Dexie, return it immediately without network requests
+        if (localRecord) {
+          return of(localRecord);
+        }
+
+        // Otherwise try the proxy, and fallback if offline/unreachable
+        return this.http.get<GsisCompanyRecord>(`${this.apiEndpoint}?afm=${cleanAfm}`).pipe(
+          catchError(() => {
+            return this.getMockFallbackRecord(cleanAfm);
+          })
+        );
       })
     );
   }
 
   /**
-   * Offline/Local Dev Fallback: Returns realistic Greek company data
-   * for development or when internet connectivity is down.
+   * Checks Dexie for your own shop profile or cached suppliers/customers.
+   */
+  private async checkLocalDexieStorage(afm: string): Promise<GsisCompanyRecord | null> {
+    const tenantId = this.auth.currentTenantId();
+
+   // 1. Is this your own shop from /settings?
+    const settings = await this.db.getSettingsForTenant(tenantId);
+    if (settings && settings.afm === afm) {
+      const s = settings as any; // Safe fallback for flat or nested models
+      return {
+        afm: settings.afm,
+        legalName: settings.legalName,
+        commercialTitle: s.tradeName || settings.legalName,
+        doy: settings.doy || '',
+        doyDescr: settings.doy || '',
+        postalAddress: s.street || s.address?.street || '',
+        postalAddressNo: s.number || s.address?.number || '',
+        postalZipCode: s.postalCode || s.address?.postalCode || '',
+        postalAreaDescription: s.city || s.address?.city || '',
+        isNormalVatRegime: true,
+        active: true,
+      };
+    }
+
+    // 2. Is this an existing customer/supplier saved in Dexie?
+    const cachedCustomer = await this.db.getCustomerByAfm(tenantId, afm);
+    if (cachedCustomer) {
+      return {
+        afm: cachedCustomer.afm,
+        legalName: cachedCustomer.legalName,
+        commercialTitle: cachedCustomer.tradeName || cachedCustomer.legalName,
+        doy: cachedCustomer.doy || '',
+        doyDescr: cachedCustomer.doy || '',
+        postalAddress: cachedCustomer.address?.street || '',
+        postalAddressNo: cachedCustomer.address?.number || '',
+        postalZipCode: cachedCustomer.address?.postalCode || '',
+        postalAreaDescription: cachedCustomer.address?.city || '',
+        isNormalVatRegime: true,
+        active: true,
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Fallback for unknown external AFMs when no backend GSIS service is configured.
    */
   private getMockFallbackRecord(afm: string): Observable<GsisCompanyRecord> {
-    const mockDatabase: Record<string, GsisCompanyRecord> = {
-      '094123456': {
-        afm: '094123456',
-        legalName: 'ΠΑΠΑΔΟΠΟΥΛΟΣ Α.Ε.Β.Ε. ΒΙΟΜΗΧΑΝΙΑ ΜΠΙΣΚΟΤΩΝ',
-        commercialTitle: 'ΜΠΙΣΚΟΤΑ ΠΑΠΑΔΟΠΟΥΛΟΥ',
-        doy: '1159',
-        doyDescr: 'ΦΑΕ ΑΘΗΝΩΝ',
-        postalAddress: 'Π. ΡΑΛΛΗ',
-        postalAddressNo: '26',
-        postalZipCode: '11810',
-        postalAreaDescription: 'ΤΑΥΡΟΣ',
-        firmActivationDate: '1971-05-12',
-        isNormalVatRegime: true,
-        active: true,
-      },
-      '801234567': {
-        afm: '801234567',
-        legalName: 'MARANTH MONΟΠΡΟΣΩΠΗ Ι.Κ.Ε.',
-        commercialTitle: 'MARANTH SOFTWARE',
-        doy: '1104',
-        doyDescr: 'ΧΑΛΑΝΔΡΙΟΥ',
-        postalAddress: 'ΛΕΩΦ. ΚΗΦΙΣΙΑΣ',
-        postalAddressNo: '200',
-        postalZipCode: '15231',
-        postalAreaDescription: 'ΧΑΛΑΝΔΡΙ',
-        firmActivationDate: '2023-01-15',
-        isNormalVatRegime: true,
-        active: true,
-      },
-    };
-
-    const record = mockDatabase[afm] || {
+    // If not found anywhere, return empty details so the user can type the real name manually
+    const record: GsisCompanyRecord = {
       afm: afm,
-      legalName: `ΕΜΠΟΡΙΚΗ ΕΠΙΧΕΙΡΗΣΗ ${afm.slice(-4)} Α.Ε.`,
-      commercialTitle: 'ΕΜΠΟΡΙΚΗ & ΣΙΑ',
-      doy: '1101',
-      doyDescr: 'Δ\' ΑΘΗΝΩΝ',
-      postalAddress: 'ΕΡΜΟΥ',
-      postalAddressNo: '15',
-      postalZipCode: '10563',
-      postalAreaDescription: 'ΑΘΗΝΑ',
-      firmActivationDate: '2010-09-01',
+      legalName: '',
+      commercialTitle: '',
+      doy: '',
+      doyDescr: '',
+      postalAddress: '',
+      postalAddressNo: '',
+      postalZipCode: '',
+      postalAreaDescription: '',
       isNormalVatRegime: true,
       active: true,
     };
 
-    return of(record).pipe(delay(400));
+    return of(record).pipe(delay(200));
   }
 }

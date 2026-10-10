@@ -20,21 +20,24 @@ export interface LocalInvoiceRecord {
 }
 
 export interface CompanySettingsRecord {
-  id: string; // 'active_company'
+  id: string;
   afm: string;
   legalName: string;
-  tradeName: string;
   doy: string;
-  gemiNumber: string;
-  street: string;
-  number: string;
-  postalCode: string;
-  city: string;
-  phone: string;
-  email: string;
-  defaultSeries: string;
-  defaultVehiclePlate: string;
-  bankIban: string;
+  aadeUserId: string;
+  aadeSubscriptionKey: string;
+  isProduction: boolean;
+  tradeName?: string;
+  gemiNumber?: string;
+  street?: string;
+  number?: string;
+  postalCode?: string;
+  city?: string;
+  phone?: string;
+  email?: string;
+  defaultSeries?: string;
+  defaultVehiclePlate?: string;
+  bankIban?: string;
 }
 
 export interface Product {

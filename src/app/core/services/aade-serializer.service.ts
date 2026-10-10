@@ -1,6 +1,11 @@
 import { Injectable } from '@angular/core';
-import { InvoiceLineItem, GoodsMovementData, InvoiceTotals, InvoiceDocument, Customer } from '../models/aade.models';
-
+import {
+  InvoiceLineItem,
+  GoodsMovementData,
+  InvoiceTotals,
+  InvoiceDocument,
+  Customer,
+} from '../models/aade.models';
 
 export interface CompanyIssuerInfo {
   afm: string;
@@ -25,14 +30,14 @@ export interface InvoiceDocPayload {
 @Injectable({ providedIn: 'root' })
 export class AadeSerializerService {
   /**
-   * Generates the official InvoicesDoc XML string mandated by AADE myDATA v1.0.8.
+   * Generates the official InvoicesDoc XML string mandated by AADE myDATA v1.0.8+.
    */
   public serializeToXml(invoice: InvoiceDocument | any, issuerAfm: string): string {
     return this.generateInvoicesDocXml({
       series: invoice.series,
       documentNumber: invoice.documentNumber,
       issueDate: invoice.issueDate,
-      invoiceType: invoice.invoiceType,
+      invoiceType: invoice.invoiceType || invoice.documentType || '9.1',
       currency: invoice.currency || 'EUR',
       issuer: {
         afm: issuerAfm,
@@ -48,36 +53,72 @@ export class AadeSerializerService {
   }
 
   public generateInvoicesDocXml(data: InvoiceDocPayload): string {
-    const paymentType = data.paymentMethodType ?? 1;
-
-    // Movement XML fragment for 1.2 and 9.1
+    const isMovementOnly = data.invoiceType === '9.1';
     const isMovementDoc = data.invoiceType === '1.2' || data.invoiceType === '9.1';
+
+    // 1. Transport Details (Mandatory for 9.1 and 1.2)
     let transportXml = '';
     if (isMovementDoc && data.movement) {
-      transportXml = `
-    <otherTransportDetails>
-      <vehicleNumber>${this.escapeXml(data.movement.vehicleNumber)}</vehicleNumber>
-      <movementPurpose>${data.movement.movePurpose}</movementPurpose>
-      <dispatchDate>${data.movement.dispatchDateTime.split('T')[0] || data.issueDate}</dispatchDate>
-      <dispatchTime>${data.movement.dispatchDateTime.split('T')[1] || '08:00'}:00</dispatchTime>
+      const dispatchDate = data.movement.dispatchDateTime
+        ? data.movement.dispatchDateTime.split('T')[0]
+        : data.issueDate;
+      const dispatchTime = data.movement.dispatchDateTime?.includes('T')
+        ? `${data.movement.dispatchDateTime.split('T')[1].slice(0, 5)}:00`
+        : '08:00:00';
+
+      transportXml = `\n    <otherTransportDetails>
+      <vehicleNumber>${this.escapeXml(data.movement.vehicleNumber?.trim() || '')}</vehicleNumber>
+      <movementPurpose>${data.movement.movePurpose ?? 6}</movementPurpose>
+      <dispatchDate>${dispatchDate}</dispatchDate>
+      <dispatchTime>${dispatchTime}</dispatchTime>
       <loadingAddress>
-        <street>${this.escapeXml(data.movement.addressFrom.street)}</street>
-        <number>${this.escapeXml(data.movement.addressFrom.number)}</number>
-        <postalCode>${this.escapeXml(data.movement.addressFrom.postalCode)}</postalCode>
-        <city>${this.escapeXml(data.movement.addressFrom.city)}</city>
+        <street>${this.escapeXml(data.movement.addressFrom?.street || '')}</street>
+        <number>${this.escapeXml(data.movement.addressFrom?.number || '')}</number>
+        <postalCode>${this.escapeXml(data.movement.addressFrom?.postalCode || '')}</postalCode>
+        <city>${this.escapeXml(data.movement.addressFrom?.city || '')}</city>
       </loadingAddress>
       <deliveryAddress>
-        <street>${this.escapeXml(data.movement.addressTo.street)}</street>
-        <number>${this.escapeXml(data.movement.addressTo.number)}</number>
-        <postalCode>${this.escapeXml(data.movement.addressTo.postalCode)}</postalCode>
-        <city>${this.escapeXml(data.movement.addressTo.city)}</city>
+        <street>${this.escapeXml(data.movement.addressTo?.street || '')}</street>
+        <number>${this.escapeXml(data.movement.addressTo?.number || '')}</number>
+        <postalCode>${this.escapeXml(data.movement.addressTo?.postalCode || '')}</postalCode>
+        <city>${this.escapeXml(data.movement.addressTo?.city || '')}</city>
       </deliveryAddress>
     </otherTransportDetails>`;
     }
 
+    // 2. Payment Methods: STRICTLY OMITTED for Type 9.1
+    let paymentMethodsXml = '';
+    if (!isMovementOnly) {
+      const paymentType = data.paymentMethodType ?? 1;
+      paymentMethodsXml = `\n    <paymentMethods>
+      <paymentMethodDetails>
+        <type>${paymentType}</type>
+        <amount>${data.totals.totalGrossValue.toFixed(2)}</amount>
+      </paymentMethodDetails>
+    </paymentMethods>`;
+    }
+
+    // 3. Line Items: 9.1 requires quantity/unit, zero values, and NO incomeClassification
     const linesXml = data.lines
-      .map((line) => {
+      .map((line, idx) => {
+        const lineNum = line.lineNumber || idx + 1;
         const vatCategory = line.vatRateCategory ?? 1;
+        const quantity = Number(line.quantity) || 1;
+        // 1 = Pieces (Τεμάχια), 2 = Kilograms (Κιλά)
+        const measurementUnit = (line as any).isWeighted ? 2 : 1;
+
+        if (isMovementOnly) {
+          return `      <invoiceDetails>
+        <lineNumber>${lineNum}</lineNumber>
+        <quantity>${quantity}</quantity>
+        <measurementUnit>${measurementUnit}</measurementUnit>
+        <netValue>0.00</netValue>
+        <vatCategory>${vatCategory}</vatCategory>
+        <vatAmount>0.00</vatAmount>
+      </invoiceDetails>`;
+        }
+
+        // Standard financial line (1.1, 1.2, etc.)
         const exemptionXml =
           vatCategory === 7 || vatCategory === 8
             ? `\n        <vatExemptionCategory>14</vatExemptionCategory>`
@@ -91,7 +132,9 @@ export class AadeSerializerService {
           line.incomeClassification?.amount ?? line.netValue;
 
         return `      <invoiceDetails>
-        <lineNumber>${line.lineNumber}</lineNumber>
+        <lineNumber>${lineNum}</lineNumber>
+        <quantity>${quantity}</quantity>
+        <measurementUnit>${measurementUnit}</measurementUnit>
         <netValue>${line.netValue.toFixed(2)}</netValue>
         <vatCategory>${vatCategory}</vatCategory>
         <vatAmount>${line.vatAmount.toFixed(2)}</vatAmount>${exemptionXml}
@@ -103,6 +146,11 @@ export class AadeSerializerService {
       </invoiceDetails>`;
       })
       .join('\n');
+
+    // 4. Totals Summary: 0.00 across the board for 9.1
+    const netSummary = isMovementOnly ? '0.00' : data.totals.totalNetValue.toFixed(2);
+    const vatSummary = isMovementOnly ? '0.00' : data.totals.totalVatAmount.toFixed(2);
+    const grossSummary = isMovementOnly ? '0.00' : data.totals.totalGrossValue.toFixed(2);
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <InvoicesDoc xmlns="http://www.aade.gr/myDATA/invoice/v1.0"
@@ -131,23 +179,17 @@ export class AadeSerializerService {
       <invoiceType>${data.invoiceType}</invoiceType>
       <currency>${data.currency}</currency>
       ${isMovementDoc ? '<isMovementDoc>true</isMovementDoc>' : ''}
-    </invoiceHeader>
-    <paymentMethods>
-      <paymentMethodDetails>
-        <type>${paymentType}</type>
-        <amount>${data.totals.totalGrossValue.toFixed(2)}</amount>
-      </paymentMethodDetails>
-    </paymentMethods>${transportXml}
+    </invoiceHeader>${paymentMethodsXml}${transportXml}
 ${linesXml}
     <invoiceSummary>
-      <totalNetValue>${data.totals.totalNetValue.toFixed(2)}</totalNetValue>
-      <totalVatAmount>${data.totals.totalVatAmount.toFixed(2)}</totalVatAmount>
+      <totalNetValue>${netSummary}</totalNetValue>
+      <totalVatAmount>${vatSummary}</totalVatAmount>
       <totalWithheldAmount>0.00</totalWithheldAmount>
       <totalOtherTaxesAmount>0.00</totalOtherTaxesAmount>
       <totalStampDutyAmount>0.00</totalStampDutyAmount>
       <totalFeesAmount>0.00</totalFeesAmount>
       <totalDeductionsAmount>0.00</totalDeductionsAmount>
-      <totalGrossValue>${data.totals.totalGrossValue.toFixed(2)}</totalGrossValue>
+      <totalGrossValue>${grossSummary}</totalGrossValue>
     </invoiceSummary>
   </invoice>
 </InvoicesDoc>`.trim();
@@ -162,5 +204,4 @@ ${linesXml}
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&apos;');
   }
-
 }

@@ -13,6 +13,21 @@ export interface PrintableInvoiceData {
   documentNumber: number;
   issueDate: string;
   invoiceType: string;
+  issuer: {
+    legalName: string;
+    tradeName?: string;
+    afm: string;
+    doy?: string;
+    branch?: number;
+    address?: {
+      street: string;
+      number: string;
+      postalCode: string;
+      city: string;
+    };
+    phone?: string;
+    email?: string;
+  };
   customer: Customer;
   lines: InvoiceLineItem[];
   totals: InvoiceTotals;
@@ -120,17 +135,36 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
               <div class="space-y-5">
                 <!-- Header -->
                 <div class="flex justify-between items-start border-b-2 border-slate-900 pb-5">
-                  <div>
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="w-6 h-6 rounded bg-indigo-600 text-white font-bold flex items-center justify-center text-xs">M</span>
-                      <h1 class="text-lg font-black tracking-tight uppercase">Maranth IKE</h1>
-                    </div>
-                    <p class="font-medium text-slate-700">Υπηρεσίες Πληροφορικής & Λογισμικό B2B</p>
-                    <p class="text-[11px] text-slate-600 mt-1">Α.Φ.Μ.: <span class="font-bold font-mono">801234567</span> | Δ.Ο.Υ.: ΧΑΛΑΝΔΡΙΟΥ</p>
-                    <p class="text-[11px] text-slate-600">Αρ. Γ.Ε.Μ.Η.: 154823901000</p>
-                    <p class="text-[11px] text-slate-600">Λεωφ. Κηφισίας 200, 15231 Χαλάνδρι, Αθήνα</p>
-                    <p class="text-[11px] text-slate-600">Τηλ: +30 210 1234567 | info&#64;maranth.gr</p>
-                  </div>
+                  <!-- DYNAMIC TENANT ISSUER -->
+<div class="flex items-center gap-2 mb-1">
+  <span class="w-6 h-6 rounded bg-indigo-600 text-white font-bold flex items-center justify-center text-xs">
+    {{ (invoice().issuer.tradeName || invoice().issuer.legalName).charAt(0) }}
+  </span>
+  <h1 class="text-lg font-black tracking-tight uppercase">
+    {{ invoice().issuer.tradeName || invoice().issuer.legalName }}
+  </h1>
+</div>
+@if (invoice().issuer.tradeName && invoice().issuer.legalName !== invoice().issuer.tradeName) {
+  <p class="font-medium text-slate-700">{{ invoice().issuer.legalName }}</p>
+}
+<p class="text-[11px] text-slate-600 mt-1">
+  Α.Φ.Μ.: <span class="font-bold font-mono">{{ invoice().issuer.afm }}</span>
+  @if (invoice().issuer.doy) {
+    | Δ.Ο.Υ.: {{ invoice().issuer.doy }}
+  }
+</p>
+@if (invoice().issuer.address?.street) {
+  <p class="text-[11px] text-slate-600">
+    {{ invoice().issuer.address?.street }} {{ invoice().issuer.address?.number }}, 
+    {{ invoice().issuer.address?.postalCode }} {{ invoice().issuer.address?.city }}
+  </p>
+}
+@if (invoice().issuer.phone || invoice().issuer.email) {
+  <p class="text-[11px] text-slate-600">
+    {{ invoice().issuer.phone ? 'Τηλ: ' + invoice().issuer.phone : '' }} 
+    {{ invoice().issuer.email ? '| ' + invoice().issuer.email : '' }}
+  </p>
+}
 
                   <div class="text-right flex flex-col items-end">
                     <div class="border-2 border-slate-900 bg-slate-50 px-4 py-2 rounded-md text-center inline-block">
@@ -149,7 +183,7 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
 
                 <!-- Recipient Box -->
                 <div class="border border-slate-300 rounded-lg p-3.5 bg-slate-50/70">
-                  <span class="block text-[9px] font-extrabold uppercase tracking-widest text-slate-500 mb-1.5">Στοιχεια Ληπτη / Πελατη</span>
+                  <span class="block text-[9px] font-extrabold uppercase tracking-widest text-slate-500 mb-1.5">Στοιχεια Ληπτη / Προμηθευτη</span>
                   <div class="grid grid-cols-2 gap-4 text-[11px]">
                     <div>
                       <p class="font-bold text-slate-900 text-xs">{{ invoice().customer.legalName }}</p>
@@ -158,8 +192,8 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
                     </div>
                     <div class="space-y-0.5 text-right sm:text-left sm:pl-8 border-l border-slate-200">
                       <p><span class="text-slate-500">Α.Φ.Μ.:</span> <span class="font-bold font-mono text-slate-900">{{ invoice().customer.afm }}</span></p>
-                      <p><span class="text-slate-500">Δ.Ο.Υ.:</span> <span class="text-slate-800">{{ invoice().customer.doy }}</span></p>
-                      <p><span class="text-slate-500">Email:</span> <span class="font-mono text-slate-800">{{ invoice().customer.email }}</span></p>
+                      <p><span class="text-slate-500">Δ.Ο.Υ.:</span> <span class="text-slate-800">{{ invoice().customer.doy || '—' }}</span></p>
+                      <p><span class="text-slate-500">Email:</span> <span class="font-mono text-slate-800">{{ invoice().customer.email || '—' }}</span></p>
                     </div>
                   </div>
                 </div>
@@ -199,13 +233,17 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
                   <thead>
                     <tr class="border-b-2 border-slate-900 text-[10px] uppercase font-bold text-slate-700">
                       <th class="py-2 w-8">#</th>
-                      <th class="py-2">Περιγραφη Ειδους / Υπηρεσιας</th>
-                      <th class="py-2 text-right w-16">Ποσ.</th>
-                      <th class="py-2 text-right w-20">Τιμη Μον.</th>
-                      <th class="py-2 text-right w-16">Εκπτ. %</th>
-                      <th class="py-2 text-right w-20">Καθαρη</th>
+                      <th class="py-2">Περιγραφη Ειδους</th>
+                      <th class="py-2 text-right w-20">Ποσοτητα</th>
+                      @if (invoice().invoiceType !== '9.1') {
+                        <th class="py-2 text-right w-20">Τιμη Μον.</th>
+                        <th class="py-2 text-right w-16">Εκπτ. %</th>
+                        <th class="py-2 text-right w-20">Καθαρη</th>
+                      }
                       <th class="py-2 text-right w-16">ΦΠΑ</th>
-                      <th class="py-2 text-right w-24">Συνολο</th>
+                      @if (invoice().invoiceType !== '9.1') {
+                        <th class="py-2 text-right w-24">Συνολο</th>
+                      }
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-200">
@@ -213,19 +251,23 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
                       <tr>
                         <td class="py-2 font-mono text-slate-500">{{ line.lineNumber }}</td>
                         <td class="py-2 font-medium text-slate-900">{{ line.description }}</td>
-                        <td class="py-2 text-right font-mono">{{ line.quantity }}</td>
-                        <td class="py-2 text-right font-mono">{{ line.unitPrice | number:'1.2-2' }} €</td>
-                        <td class="py-2 text-right font-mono">{{ line.discountPercentage }}%</td>
-                        <td class="py-2 text-right font-mono">{{ line.netValue | number:'1.2-2' }} €</td>
+                        <td class="py-2 text-right font-mono font-bold">{{ line.quantity }} Τεμ.</td>
+                        @if (invoice().invoiceType !== '9.1') {
+                          <td class="py-2 text-right font-mono">{{ line.unitPrice | number:'1.2-2' }} €</td>
+                          <td class="py-2 text-right font-mono">{{ line.discountPercentage }}%</td>
+                          <td class="py-2 text-right font-mono">{{ line.netValue | number:'1.2-2' }} €</td>
+                        }
                         <td class="py-2 text-right font-mono">{{ line.vatPercentage }}%</td>
-                        <td class="py-2 text-right font-mono font-bold text-slate-900">{{ line.totalValue | number:'1.2-2' }} €</td>
+                        @if (invoice().invoiceType !== '9.1') {
+                          <td class="py-2 text-right font-mono font-bold text-slate-900">{{ line.totalValue | number:'1.2-2' }} €</td>
+                        }
                       </tr>
                     }
                   </tbody>
                 </table>
               </div>
 
-              <!-- Footer with AADE QR & Totals -->
+              <!-- Footer with AADE QR & Totals/Signatures -->
               <div class="border-t-2 border-slate-900 pt-4 mt-6">
                 <div class="flex justify-between items-end">
                   <div class="flex items-center gap-4">
@@ -234,28 +276,51 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
                       <p class="font-extrabold uppercase tracking-wider text-slate-900">Ψηφιακη Σημανση myDATA</p>
                       <p><span class="text-slate-500">MARK:</span> <span class="font-bold font-mono text-slate-900">{{ invoice().mark }}</span></p>
                       <p class="max-w-[260px] truncate"><span class="text-slate-500">UID:</span> <span class="font-mono text-[9px] text-slate-700">{{ invoice().uid }}</span></p>
-                      <p class="text-[9px] text-slate-500 italic">Επαλήθευση εγκυρότητας μέσω σάρωσης του QR Code</p>
+                      @if (invoice().invoiceType === '9.1') {
+                        <p class="text-[9px] font-bold text-amber-800">Μηδενική Χρηματική Αξία (Σκοπός: 6 - Επιστροφή)</p>
+                      } @else {
+                        <p class="text-[9px] text-slate-500 italic">Επαλήθευση εγκυρότητας μέσω σάρωσης του QR Code</p>
+                      }
                     </div>
                   </div>
 
-                  <div class="w-64 space-y-1.5 text-right text-xs">
-                    <div class="flex justify-between text-slate-600">
-                      <span>Καθαρή Αξία:</span>
-                      <span class="font-mono font-medium text-slate-900">{{ invoice().totals.totalNetValue | number:'1.2-2' }} €</span>
+                  @if (invoice().invoiceType === '9.1') {
+                    <div class="w-80 space-y-3 text-xs border border-slate-300 bg-slate-50 p-3 rounded-lg">
+                      <div class="flex justify-between font-bold text-slate-800 pb-1 border-b border-slate-200">
+                        <span>ΣΥΝΟΛΟ ΕΙΔΩΝ:</span>
+                        <span class="font-mono font-black">{{ invoice().lines.length }} γραμμές</span>
+                      </div>
+                      <div class="grid grid-cols-2 gap-4 pt-2 text-[10px] text-center">
+                        <div>
+                          <span class="block text-slate-500 font-bold mb-6">Ο ΠΑΡΑΔΩΣΑΣ</span>
+                          <span class="block border-t border-slate-400 pt-1">Υπογραφή</span>
+                        </div>
+                        <div>
+                          <span class="block text-slate-500 font-bold mb-6">Ο ΠΑΡΑΛΑΒΩΝ</span>
+                          <span class="block border-t border-slate-400 pt-1">Υπογραφή / Σφραγίδα</span>
+                        </div>
+                      </div>
                     </div>
-                    <div class="flex justify-between text-slate-600">
-                      <span>Συνολικός Φ.Π.Α.:</span>
-                      <span class="font-mono font-medium text-slate-900">{{ invoice().totals.totalVatAmount | number:'1.2-2' }} €</span>
+                  } @else {
+                    <div class="w-64 space-y-1.5 text-right text-xs">
+                      <div class="flex justify-between text-slate-600">
+                        <span>Καθαρή Αξία:</span>
+                        <span class="font-mono font-medium text-slate-900">{{ invoice().totals.totalNetValue | number:'1.2-2' }} €</span>
+                      </div>
+                      <div class="flex justify-between text-slate-600">
+                        <span>Συνολικός Φ.Π.Α.:</span>
+                        <span class="font-mono font-medium text-slate-900">{{ invoice().totals.totalVatAmount | number:'1.2-2' }} €</span>
+                      </div>
+                      <div class="border-t border-slate-900 pt-2 flex justify-between text-sm font-black text-slate-900">
+                        <span>Πληρωτέο Σύνολο:</span>
+                        <span class="font-mono text-indigo-700 text-base">{{ invoice().totals.totalGrossValue | number:'1.2-2' }} €</span>
+                      </div>
                     </div>
-                    <div class="border-t border-slate-900 pt-2 flex justify-between text-sm font-black text-slate-900">
-                      <span>Πληρωτέο Σύνολο:</span>
-                      <span class="font-mono text-indigo-700 text-base">{{ invoice().totals.totalGrossValue | number:'1.2-2' }} €</span>
-                    </div>
-                  </div>
+                  }
                 </div>
 
                 <div class="mt-6 pt-3 border-t border-slate-200 text-center text-[9px] text-slate-400">
-                  Εκδόθηκε μέσω Maranth Timologio SaaS (maranth.gr) — myDATA Technical Protocol v1.0.8
+                  Εκδόθηκε μέσω Maranth Timologio SaaS — myDATA Technical Protocol v1.0.8
                 </div>
               </div>
 
@@ -270,11 +335,22 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
               
               <!-- Company Header -->
               <div class="text-center pb-2 border-b border-dashed border-black">
-                <p class="font-black text-sm tracking-wider uppercase">MARANTH IKE</p>
-                <p class="text-[10px]">ΥΠΗΡΕΣΙΕΣ ΠΛΗΡΟΦΟΡΙΚΗΣ & B2B</p>
-                <p class="text-[10px]">ΑΦΜ: 801234567 - ΔΟΥ: ΧΑΛΑΝΔΡΙΟΥ</p>
-                <p class="text-[9px]">Λ. ΚΗΦΙΣΙΑΣ 200, ΧΑΛΑΝΔΡΙ, ΑΘΗΝΑ</p>
-                <p class="text-[9px]">ΤΗΛ: 210 1234567</p>
+                <!-- DYNAMIC TENANT ISSUER -->
+<p class="font-black text-sm tracking-wider uppercase">
+  {{ invoice().issuer.tradeName || invoice().issuer.legalName }}
+</p>
+<p class="text-[10px]">
+  ΑΦΜ: {{ invoice().issuer.afm }}
+  {{ invoice().issuer.doy ? '- ΔΟΥ: ' + invoice().issuer.doy : '' }}
+</p>
+@if (invoice().issuer.address?.street) {
+  <p class="text-[9px]">
+    {{ invoice().issuer.address?.street }} {{ invoice().issuer.address?.number }}, {{ invoice().issuer.address?.city }}
+  </p>
+}
+@if (invoice().issuer.phone) {
+  <p class="text-[9px]">ΤΗΛ: {{ invoice().issuer.phone }}</p>
+}
               </div>
 
               <!-- Document Metadata -->
@@ -295,7 +371,7 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
               <!-- Client Details -->
               <div class="py-2 border-b border-dashed border-black text-[10px] space-y-0.5">
                 <p class="font-bold uppercase truncate">{{ invoice().customer.legalName }}</p>
-                <p>ΑΦΜ: <span class="font-bold">{{ invoice().customer.afm }}</span> | ΔΟΥ: {{ invoice().customer.doy }}</p>
+                <p>ΑΦΜ: <span class="font-bold">{{ invoice().customer.afm }}</span> | ΔΟΥ: {{ invoice().customer.doy || '—' }}</p>
                 <p class="truncate">{{ invoice().customer.address?.street }} {{ invoice().customer.address?.number }}, {{ invoice().customer.address?.city }}</p>
               </div>
 
@@ -318,40 +394,76 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
 
               <!-- Items Table -->
               <div class="py-2 border-b border-dashed border-black">
-                <div class="flex justify-between font-bold text-[9px] pb-1 border-b border-black">
-                  <span class="w-[50%]">ΕΙΔΟΣ/ΠΕΡΙΓΡΑΦΗ</span>
-                  <span class="w-[20%] text-right">ΠΟΣxΤΙΜ</span>
-                  <span class="w-[30%] text-right">ΑΞΙΑ</span>
-                </div>
+                @if (invoice().invoiceType === '9.1') {
+                  <div class="flex justify-between font-bold text-[9px] pb-1 border-b border-black">
+                    <span class="w-[70%]">ΕΙΔΟΣ/ΠΕΡΙΓΡΑΦΗ</span>
+                    <span class="w-[30%] text-right">ΠΟΣΟΤΗΤΑ</span>
+                  </div>
 
-                <div class="divide-y divide-dotted divide-slate-400 py-1">
-                  @for (line of invoice().lines; track line.id) {
-                    <div class="py-1 text-[10px]">
-                      <div class="font-bold truncate">{{ line.description }}</div>
-                      <div class="flex justify-between text-[9px]">
-                        <span>{{ line.quantity }} x {{ line.unitPrice | number:'1.2-2' }}€ ({{ line.vatPercentage }}%)</span>
-                        <span class="font-bold">{{ line.totalValue | number:'1.2-2' }} €</span>
+                  <div class="divide-y divide-dotted divide-slate-400 py-1">
+                    @for (line of invoice().lines; track line.id) {
+                      <div class="py-1 text-[10px]">
+                        <div class="font-bold truncate">{{ line.description }}</div>
+                        <div class="flex justify-between text-[9px]">
+                          <span>ΦΠΑ: {{ line.vatPercentage }}%</span>
+                          <span class="font-bold font-mono">{{ line.quantity }} Τεμ.</span>
+                        </div>
                       </div>
-                    </div>
-                  }
-                </div>
+                    }
+                  </div>
+                } @else {
+                  <div class="flex justify-between font-bold text-[9px] pb-1 border-b border-black">
+                    <span class="w-[50%]">ΕΙΔΟΣ/ΠΕΡΙΓΡΑΦΗ</span>
+                    <span class="w-[20%] text-right">ΠΟΣxΤΙΜ</span>
+                    <span class="w-[30%] text-right">ΑΞΙΑ</span>
+                  </div>
+
+                  <div class="divide-y divide-dotted divide-slate-400 py-1">
+                    @for (line of invoice().lines; track line.id) {
+                      <div class="py-1 text-[10px]">
+                        <div class="font-bold truncate">{{ line.description }}</div>
+                        <div class="flex justify-between text-[9px]">
+                          <span>{{ line.quantity }} x {{ line.unitPrice | number:'1.2-2' }}€ ({{ line.vatPercentage }}%)</span>
+                          <span class="font-bold">{{ line.totalValue | number:'1.2-2' }} €</span>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
               </div>
 
-              <!-- Totals -->
-              <div class="py-2 border-b border-dashed border-black space-y-1 text-right text-[11px]">
-                <div class="flex justify-between text-slate-700">
-                  <span>ΚΑΘΑΡΗ ΑΞΙΑ:</span>
-                  <span>{{ invoice().totals.totalNetValue | number:'1.2-2' }} €</span>
+              <!-- Totals / Signatures -->
+              @if (invoice().invoiceType === '9.1') {
+                <div class="py-2 border-b border-dashed border-black text-center text-[10px] font-bold space-y-1">
+                  <p>ΜΗΔΕΝΙΚΗ ΧΡΗΜΑΤΙΚΗ ΑΞΙΑ</p>
+                  <p class="text-[9px] font-normal">ΣΥΝΟΛΙΚΑ ΕΙΔΗ: {{ invoice().lines.length }} γραμμές</p>
                 </div>
-                <div class="flex justify-between text-slate-700">
-                  <span>ΣΥΝΟΛΟ ΦΠΑ:</span>
-                  <span>{{ invoice().totals.totalVatAmount | number:'1.2-2' }} €</span>
+                <div class="py-3 text-[9px] grid grid-cols-2 gap-2 text-center border-b border-dashed border-black">
+                  <div>
+                    <p class="font-bold pb-4">ΠΑΡΑΔΟΣΗ</p>
+                    <p>..................</p>
+                  </div>
+                  <div>
+                    <p class="font-bold pb-4">ΠΑΡΑΛΑΒΗ</p>
+                    <p>..................</p>
+                  </div>
                 </div>
-                <div class="flex justify-between font-black text-sm pt-1 border-t border-black">
-                  <span>ΠΛΗΡΩΤΕΟ:</span>
-                  <span>{{ invoice().totals.totalGrossValue | number:'1.2-2' }} €</span>
+              } @else {
+                <div class="py-2 border-b border-dashed border-black space-y-1 text-right text-[11px]">
+                  <div class="flex justify-between text-slate-700">
+                    <span>ΚΑΘΑΡΗ ΑΞΙΑ:</span>
+                    <span>{{ invoice().totals.totalNetValue | number:'1.2-2' }} €</span>
+                  </div>
+                  <div class="flex justify-between text-slate-700">
+                    <span>ΣΥΝΟΛΟ ΦΠΑ:</span>
+                    <span>{{ invoice().totals.totalVatAmount | number:'1.2-2' }} €</span>
+                  </div>
+                  <div class="flex justify-between font-black text-sm pt-1 border-t border-black">
+                    <span>ΠΛΗΡΩΤΕΟ:</span>
+                    <span>{{ invoice().totals.totalGrossValue | number:'1.2-2' }} €</span>
+                  </div>
                 </div>
-              </div>
+              }
 
               <!-- AADE Fiscal QR Code -->
               <div class="py-3 text-center flex flex-col items-center space-y-1.5">
@@ -372,7 +484,7 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
           }
 
           <!-- ========================================== -->
-          <!-- 3. MODE: RAW AADE XML                     -->
+          <!-- 3. MODE: RAW AADE XML                      -->
           <!-- ========================================== -->
           @if (activeMode() === 'xml') {
             <div class="w-full bg-slate-950 rounded-xl p-5 border border-slate-800 text-slate-100 font-mono text-xs overflow-x-auto shadow-inner">
@@ -468,21 +580,38 @@ export class InvoicePrintComponent {
     const portal = document.getElementById('print-portal');
     const sheetToPrint = document.querySelector(
       this.activeMode() === 'thermal80' ? '.thermal-receipt' : '.print-sheet'
-    );
+    ) as HTMLElement;
 
     if (!portal || !sheetToPrint) {
       window.print();
       return;
     }
 
-    // 1. Clone the exact rendered invoice sheet into the root body portal
+    // 1. Deep clone the DOM tree
     portal.innerHTML = '';
-    portal.appendChild(sheetToPrint.cloneNode(true));
+    const cloned = sheetToPrint.cloneNode(true) as HTMLElement;
 
-    // 2. Trigger browser print dialog
+    // 2. Transfer live Canvas pixel buffer (QR code) to cloned Canvas
+    const sourceCanvases = sheetToPrint.querySelectorAll('canvas');
+    const clonedCanvases = cloned.querySelectorAll('canvas');
+
+    sourceCanvases.forEach((srcCanvas, i) => {
+      const destCanvas = clonedCanvases[i];
+      if (destCanvas) {
+        destCanvas.width = srcCanvas.width;
+        destCanvas.height = srcCanvas.height;
+        const ctx = destCanvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(srcCanvas, 0, 0);
+        }
+      }
+    });
+
+    // 3. Mount to portal and trigger print
+    portal.appendChild(cloned);
     window.print();
 
-    // 3. Clean up portal after printing
+    // 4. Clean up portal
     portal.innerHTML = '';
   }
 

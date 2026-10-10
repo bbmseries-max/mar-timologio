@@ -1,13 +1,14 @@
 import { Component, ChangeDetectionStrategy, signal, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { LocalDbService } from '@core/services/local-db.service';
+import { LocalDbService,  } from '@core/services/local-db.service';
 import { LocalInvoiceRecord } from '@core/models/database.models';
+import { PrintableInvoiceData, InvoicePrintComponent } from '../invoice-print/invoice-print.component';
 
 @Component({
   selector: 'maranth-invoice-list',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, InvoicePrintComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-7xl mx-auto p-6 space-y-6">
@@ -74,31 +75,115 @@ import { LocalInvoiceRecord } from '@core/models/database.models';
                         {{ inv.transmissionStatus === 'DRAFT' ? 'Πρόχειρο' : 'Απεσταλμένο' }}
                       </span>
                     </td>
-                    <td class="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        (click)="deleteItem(inv.id)"
-                        class="text-rose-600 hover:text-rose-800 text-[11px] font-semibold"
-                      >
-                        Διαγραφή
-                      </button>
-                    </td>
+                    <td class="px-4 py-3 text-right whitespace-nowrap space-x-2">
+  <!-- DRAFT ACTION: Open in Invoice Builder for Editing & Final Issuance -->
+  @if (inv.transmissionStatus === 'DRAFT') {
+    <a
+      [routerLink]="['/invoices/new']"
+      [queryParams]="{ draftId: inv.id }"
+      class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-md transition"
+    >
+      <span>✏️</span>
+      <span>Επεξεργασία</span>
+    </a>
+  } @else {
+    <!-- TRANSMITTED / ISSUED: Read-only preview & print -->
+    <button
+      type="button"
+      (click)="viewInvoice(inv)"
+      class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md transition"
+    >
+      <span>👁️</span>
+      <span>Προβολή</span>
+    </button>
+  }
+
+  <!-- Delete Action -->
+  <button
+    type="button"
+    (click)="deleteItem(inv.id)"
+    class="text-rose-600 hover:text-rose-800 text-[11px] font-semibold hover:underline"
+  >
+    Διαγραφή
+  </button>
+</td>
                   </tr>
                 }
               </tbody>
             </table>
           </div>
         }
+        <!-- Print / View Modal for Transmitted Invoices -->
+@if (selectedInvoiceForPrint(); as printData) {
+  <maranth-invoice-print
+    [invoice]="printData"
+    (close)="closePrintModal()"
+  ></maranth-invoice-print>
+}
       </div>
     </div>
   `,
 })
 export class InvoiceListComponent implements OnInit {
   private readonly db = inject(LocalDbService);
+  public readonly selectedInvoiceForPrint = signal<PrintableInvoiceData | null>(null);
   public readonly invoices = signal<LocalInvoiceRecord[]>([]);
 
   async ngOnInit(): Promise<void> {
     await this.loadInvoices();
+  }
+
+  public viewInvoice(inv: LocalInvoiceRecord): void {
+    if (!inv.payloadJson) {
+      console.warn('No payloadJson found for invoice:', inv.id);
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(inv.payloadJson);
+
+      const printableData: PrintableInvoiceData = {
+        series: inv.series,
+        documentNumber: inv.documentNumber,
+        issueDate: inv.issueDate,
+        invoiceType: inv.invoiceType,
+        issuer: payload.issuer || {
+          legalName: 'Επωνυμία Επιχείρησης',
+          afm: inv.customerAfm || '',
+        },
+        customer: {
+          id: inv.id || crypto.randomUUID(),
+          afm: inv.customerAfm || '',
+          branch: 0,
+          legalName: inv.customerName || '',
+          doy: payload.customer?.doy || '',
+          country: 'GR',
+          email: payload.customer?.email || '',
+          address: payload.customer?.address,
+        },
+        lines: payload.lines || [],
+        totals: payload.totals || {
+          totalNetValue: inv.totalNet,
+          totalVatAmount: inv.totalVat,
+          totalGrossValue: inv.totalGross,
+          totalDiscountAmount: 0,
+          totalWithheldAmount: 0,
+          totalOtherTaxesAmount: 0,
+          totalStampDutyAmount: 0,
+          totalFeesAmount: 0,
+          totalDeductionsAmount: 0,
+        },
+        mark: inv.mark || '—',
+        uid: inv.uid || '—',
+        qrUrl: inv.qrUrl || '',
+        xmlPayload: payload.xmlPayload,
+        movement: payload.movement,
+      };
+
+      this.selectedInvoiceForPrint.set(printableData);
+    } catch (err) {
+      console.error('Failed to parse invoice payload for preview:', err);
+    }
   }
 
   private async loadInvoices(): Promise<void> {
@@ -106,10 +191,16 @@ export class InvoiceListComponent implements OnInit {
     this.invoices.set(list);
   }
 
+  public closePrintModal(): void {
+    this.selectedInvoiceForPrint.set(null);
+  }
+
   public async deleteItem(id: string): Promise<void> {
-    if (confirm('Είστε βέβαιοι ότι θέλετε να διαγράψετε το παραστατικό;')) {
+    const confirmed = confirm('Είστε βέβαιοι ότι θέλετε να διαγράψετε αυτό το παραστατικό;');
+    if (confirmed) {
       await this.db.deleteInvoice(id);
-      await this.loadInvoices();
+      // Reload list
+      this.invoices.update(list => list.filter(item => item.id !== id));
     }
   }
 }

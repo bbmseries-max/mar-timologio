@@ -1,8 +1,9 @@
-import { Component, ChangeDetectionStrategy, signal, inject, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { greekAfmValidator } from '../../core/validators/afm.validator';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { LocalDbService } from '@core/services/local-db.service';
-import { CompanySettingsRecord } from '@core/models/database.models';
+import { AuthTenantService } from '@core/services/auth-tenant.service';
 
 @Component({
   selector: 'maranth-settings',
@@ -10,158 +11,204 @@ import { CompanySettingsRecord } from '@core/models/database.models';
   imports: [CommonModule, ReactiveFormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="max-w-4xl mx-auto p-6 space-y-6">
-      <div class="flex items-center justify-between border-b border-slate-200/80 pb-4">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+  
+  <!-- Header -->
+  <div class="border-b border-slate-200 pb-5 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Ρυθμίσεις Καταστήματος & myDATA</h1>
+      <p class="text-xs text-slate-500 mt-1">Φορολογική ταυτότητα, έδρα καταστήματος και διαπιστευτήρια AADE API</p>
+    </div>
+    
+    @if (savedNotification()) {
+      <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+        <span>✓</span> {{ savedNotification() }}
+      </span>
+    }
+  </div>
+
+  <form [formGroup]="form" (ngSubmit)="onSave()" class="space-y-6">
+    
+    <!-- Section 1: Business Identity & Tax Details -->
+    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+      <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700">Φορολογική Ταυτότητα (Εκδότης)</h2>
+      
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
         <div>
-          <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Στοιχεία Επιχείρησης & myDATA</h1>
-          <p class="text-xs text-slate-500 mt-0.5">Ρυθμίσεις εκδότη παραστατικών, προεπιλεγμένων σειρών και οχημάτων</p>
+          <label class="block font-semibold text-slate-700 mb-1">Α.Φ.Μ. Καταστήματος *</label>
+          <input type="text" formControlName="afm" maxlength="9" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="9 ψηφία" />
         </div>
-        <button
-          type="button"
-          (click)="onSaveSettings()"
-          class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm transition active:scale-98"
-        >
-          {{ savedStatus() }}
-        </button>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Δ.Ο.Υ. *</label>
+          <input type="text" formControlName="doy" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="π.χ. Δ' ΑΘΗΝΩΝ" />
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block font-semibold text-slate-700 mb-1">Επωνυμία / Εμπορικός Τίτλος *</label>
+          <input type="text" formControlName="legalName" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="π.χ. ΜΙΝΙ ΜΑΡΚΕΤ Ο ΠΕΤΡΟΣ" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 2: Store Physical Address (Used as Default Τόπος Έναρξης for Transport) -->
+    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+      <div>
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700">Φυσική Διεύθυνση Έδρας / Καταστήματος</h2>
+        <p class="text-[11px] text-slate-400 mt-0.5">Αποτελεί τον προεπιλεγμένο τόπο εκκίνησης (Τόπος Έναρξης) για τα Δελτία Αποστολής (9.1)</p>
+      </div>
+      
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs">
+        <div class="sm:col-span-2">
+          <label class="block font-semibold text-slate-700 mb-1">Οδός *</label>
+          <input type="text" formControlName="street" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="π.χ. Ακαδημίας" />
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Αριθμός *</label>
+          <input type="text" formControlName="number" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="π.χ. 45" />
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Τ.Κ. *</label>
+          <input type="text" formControlName="postalCode" maxlength="5" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="π.χ. 10672" />
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block font-semibold text-slate-700 mb-1">Πόλη / Περιοχή *</label>
+          <input type="text" formControlName="city" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="π.χ. Αθήνα" />
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Εγκατάσταση / Branch (AADE)</label>
+          <input type="number" formControlName="branch" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="0 = Έδρα" />
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Προεπιλεγμένη Σειρά</label>
+          <input type="text" formControlName="defaultSeries" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="π.χ. ΔΑ ή ΕΠΙΣΤΡ" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 3: AADE Friendly Credentials -->
+    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <span>🔑</span>
+            <span>AADE myDATA REST API Friendly Credentials</span>
+          </h2>
+          <p class="text-[11px] text-slate-400 mt-0.5">Κωδικοί διεπαφής από την ιστοσελίδα της ΑΑΔΕ</p>
+        </div>
       </div>
 
-      <form [formGroup]="settingsForm" class="space-y-6">
-        <!-- Fiscal Identity Card -->
-        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-4">
-          <div class="flex items-center gap-2 border-b border-slate-100 pb-3">
-            <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700">Φορολογική Ταυτότητα Επιχείρησης</h2>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">Α.Φ.Μ. Εκδότη *</label>
-              <input type="text" formControlName="afm" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border font-mono bg-slate-50/50 focus:bg-white" />
-            </div>
-
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">Δ.Ο.Υ. *</label>
-              <input type="text" formControlName="doy" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border bg-slate-50/50 focus:bg-white" />
-            </div>
-
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">Επωνυμία Επιχείρησης *</label>
-              <input type="text" formControlName="legalName" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border bg-slate-50/50 focus:bg-white" />
-            </div>
-
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">Διακριτικός Τίτλος</label>
-              <input type="text" formControlName="tradeName" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border bg-slate-50/50 focus:bg-white" />
-            </div>
-
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">Αριθμός Γ.Ε.Μ.Η.</label>
-              <input type="text" formControlName="gemiNumber" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border font-mono bg-slate-50/50 focus:bg-white" />
-            </div>
-
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">IBAN Τράπεζας</label>
-              <input type="text" formControlName="bankIban" placeholder="GR00 0000 0000..." class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border font-mono bg-slate-50/50 focus:bg-white" />
-            </div>
-          </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Όνομα Χρήστη (aade-user-id)</label>
+          <input type="text" formControlName="aadeUserId" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="User ID" />
         </div>
 
-        <!-- Headquarters Address -->
-        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-4">
-          <div class="flex items-center gap-2 border-b border-slate-100 pb-3">
-            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700">Διεύθυνση Έδρας & Επικοινωνία</h2>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div class="sm:col-span-3">
-              <label class="block text-xs font-medium text-slate-600 mb-1">Οδός</label>
-              <input type="text" formControlName="street" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border" />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">Αριθμός</label>
-              <input type="text" formControlName="number" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border" />
-            </div>
-            <div class="sm:col-span-2">
-              <label class="block text-xs font-medium text-slate-600 mb-1">Τ.Κ.</label>
-              <input type="text" formControlName="postalCode" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border font-mono" />
-            </div>
-            <div class="sm:col-span-2">
-              <label class="block text-xs font-medium text-slate-600 mb-1">Πόλη</label>
-              <input type="text" formControlName="city" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border" />
-            </div>
-            <div class="sm:col-span-2">
-              <label class="block text-xs font-medium text-slate-600 mb-1">Τηλέφωνο</label>
-              <input type="text" formControlName="phone" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border font-mono" />
-            </div>
-            <div class="sm:col-span-2">
-              <label class="block text-xs font-medium text-slate-600 mb-1">Email</label>
-              <input type="email" formControlName="email" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border" />
-            </div>
-          </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Κλειδί Συνδρομής (Subscription Key)</label>
+          <input type="password" formControlName="aadeSubscriptionKey" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="32-ψήφιο API Key" />
         </div>
+      </div>
 
-        <!-- Ex-Van & Defaults Card -->
-        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-4">
-          <div class="flex items-center gap-2 border-b border-slate-100 pb-3">
-            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700">Προεπιλογές Φορητής Πώλησης (Ex-Van)</h2>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">Προεπιλεγμένη Σειρά</label>
-              <input type="text" formControlName="defaultSeries" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border uppercase font-mono" />
-              <span class="text-[10px] text-slate-400 mt-1 block">π.χ. VAN-1 ή A</span>
-            </div>
-
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1">Πινακίδα Οχήματος Van</label>
-              <input type="text" formControlName="defaultVehiclePlate" class="w-full text-xs rounded-lg border-slate-200 px-3 py-2 border uppercase font-mono font-bold" />
-              <span class="text-[10px] text-slate-400 mt-1 block">Υποχρεωτικό για 1.2 & 9.1</span>
-            </div>
-          </div>
-        </div>
-      </form>
+      <div class="pt-2 flex items-center gap-2">
+        <input type="checkbox" id="isProdCheck" formControlName="isProduction" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+        <label for="isProdCheck" class="text-xs font-semibold text-slate-700 cursor-pointer">
+          Παραγωγικό Περιβάλλον myDATA (Live Transmission)
+        </label>
+      </div>
     </div>
+
+    <!-- Submit Button -->
+    <div class="flex justify-end gap-3 pt-2">
+      <button
+        type="submit"
+        [disabled]="form.invalid || isSaving()"
+        class="inline-flex items-center justify-center gap-2 h-10 px-5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 disabled:opacity-50 transition active:scale-98"
+      >
+        <span>💾</span>
+        <span>{{ isSaving() ? 'Αποθήκευση...' : 'Αποθήκευση Ρυθμίσεων' }}</span>
+      </button>
+    </div>
+
+  </form>
+</div>
   `,
+  //changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SettingsComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly db = inject(LocalDbService);
+  private readonly auth = inject(AuthTenantService);
 
-  public readonly savedStatus = signal<string>('Αποθήκευση Ρυθμίσεων');
+  public readonly isSaving = signal<boolean>(false);
+  public readonly savedNotification = signal<string | null>(null);
 
-  public readonly settingsForm = this.fb.group({
-    afm: ['801234567', Validators.required],
-    legalName: ['MARANTH MONΟΠΡΟΣΩΠΗ Ι.Κ.Ε.', Validators.required],
-    tradeName: ['MARANTH TIMOLOGIO', Validators.required],
-    doy: ['ΧΑΛΑΝΔΡΙΟΥ', Validators.required],
-    gemiNumber: ['154823901000', Validators.required],
-    street: ['Λεωφ. Κηφισίας', Validators.required],
-    number: ['200', Validators.required],
-    postalCode: ['15231', Validators.required],
-    city: ['Χαλάνδρι', Validators.required],
-    phone: ['+30 210 1234567', Validators.required],
-    email: ['info@maranth.gr', [Validators.required, Validators.email]],
-    defaultSeries: ['VAN-1', Validators.required],
-    defaultVehiclePlate: ['IEB-4892', Validators.required],
-    bankIban: ['GR12 0110 1230 0000 1234 5678 901'],
+  public readonly form = this.fb.group({
+    afm: ['', [Validators.required, greekAfmValidator()]],
+    doy: ['', Validators.required],
+    legalName: ['', Validators.required],
+    street: ['', Validators.required],
+    number: ['', Validators.required],
+    postalCode: ['', Validators.required],
+    city: ['', Validators.required],
+    branch: [0],
+    defaultSeries: ['ΕΠΙΣΤΡ'],
+    aadeUserId: [''],
+    aadeSubscriptionKey: [''],
+    isProduction: [false],
   });
 
   async ngOnInit(): Promise<void> {
-    const existing = await this.db.getCompanySettings();
-    if (existing) {
-      this.settingsForm.patchValue(existing);
+    const tenantId = this.auth.currentTenantId();
+    if (!tenantId) return;
+
+    const saved = await this.db.getSettingsForTenant(tenantId);
+    if (saved) {
+      this.form.patchValue(saved as any);
     }
   }
 
-  public async onSaveSettings(): Promise<void> {
-    if (this.settingsForm.invalid) return;
+  async onSave(): Promise<void> {
+    if (this.form.invalid) return;
 
-    const data = this.settingsForm.getRawValue() as CompanySettingsRecord;
-    await this.db.saveCompanySettings(data);
-    this.savedStatus.set('✓ Αποθηκεύτηκε!');
-    setTimeout(() => this.savedStatus.set('Αποθήκευση Ρυθμίσεων'), 2000);
+    const tenantId = this.auth.currentTenantId();
+    if (!tenantId) {
+      alert('Σφάλμα: Δεν βρέθηκε ενεργός οργανισμός (Tenant).');
+      return;
+    }
+
+    this.isSaving.set(true);
+    try {
+      const val = this.form.getRawValue();
+      await this.db.saveSettingsForTenant(tenantId, {
+        tenantId,
+        afm: val.afm!,
+        doy: val.doy!,
+        legalName: val.legalName!,
+        street: val.street!,
+        number: val.number!,
+        postalCode: val.postalCode!,
+        city: val.city!,
+        branch: Number(val.branch ?? 0),
+        defaultSeries: val.defaultSeries || 'ΕΠΙΣΤΡ',
+        aadeUserId: val.aadeUserId || '',
+        aadeSubscriptionKey: val.aadeSubscriptionKey || '',
+        isProduction: !!val.isProduction,
+        updatedAt: new Date().toISOString()
+      });
+
+      this.savedNotification.set('Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!');
+      setTimeout(() => this.savedNotification.set(null), 3000);
+    } catch (err) {
+      console.error('Failed to save tenant settings:', err);
+      alert('Προέκυψε σφάλμα κατά την αποθήκευση στο Dexie.');
+    } finally {
+      this.isSaving.set(false);
+    }
   }
 }

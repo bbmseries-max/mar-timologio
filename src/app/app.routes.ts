@@ -9,6 +9,10 @@ export const routes: Routes = [
     title: 'Σύνδεση — Maranth Hub',
   },
   {
+    path: 'reset-password',
+    loadComponent: () => import('./features/auth/reset-password.component').then(m => m.ResetPasswordComponent),
+  },
+  {
     path: '',
     canActivate: [authGuard],
     children: [

@@ -13,25 +13,40 @@ export const VAT_RATES_MAP: Record<VatRateCategory, number> = {
 };
 
 /**
- * Validates Greek AFM (Tax Identification Number) using the standard Modulo 11 algorithm.
+ * Validates Greek Tax Identification Numbers (Α.Φ.Μ.) via official Modulo-11 algorithm.
+ * Correctly supports leading zeros (e.g., 067..., 07..., 09...).
  */
-export function isValidGreekAfm(afm: string): boolean {
-  if (!/^\d{9}$/.test(afm) || afm === '000000000') {
+export function isValidGreekAfm(afm: unknown): boolean {
+  if (afm === null || afm === undefined) return false;
+
+  // 1. Force string conversion and strip any spaces or non-digit chars
+  let clean = String(afm).trim().replace(/\D/g, '');
+
+  // 2. Older 8-digit tax IDs: pad single leading zero
+  if (clean.length === 8) {
+    clean = '0' + clean;
+  }
+
+  // 3. Must be exactly 9 digits and cannot be all zeros
+  if (clean.length !== 9 || clean === '000000000') {
     return false;
   }
 
-  const digits = afm.split('').map(Number);
+  // 4. Modulo-11 Algorithm
+  // Digits: d1 d2 d3 d4 d5 d6 d7 d8 (check digit: d9)
+  // Weights: 256, 128, 64, 32, 16, 8, 4, 2
+  const digits = clean.split('').map(d => parseInt(d, 10));
   const checkDigit = digits[8];
 
   let sum = 0;
   for (let i = 0; i < 8; i++) {
-    sum += digits[i] * Math.pow(2, 8 - i);
+    sum += digits[i] * (1 << (8 - i)); // equivalent to digits[i] * Math.pow(2, 8 - i)
   }
 
   const remainder = sum % 11;
-  const calculatedCheck = remainder % 10;
+  const computedCheckDigit = remainder % 10;
 
-  return calculatedCheck === checkDigit;
+  return computedCheckDigit === checkDigit;
 }
 
 /**

@@ -91,7 +91,7 @@ export interface InvoiceLineItem {
   vatAmount: number;
   vatExemptionCategory?: VatExemptionCategory;
   totalValue: number;
-  incomeClassification: {
+  incomeClassification?: {
     classificationType: IncomeClassificationType;
     classificationCategory: IncomeClassificationCategory;
     amount: number;
