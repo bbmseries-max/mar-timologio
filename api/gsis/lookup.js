@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // Official GSIS RgWsPublic2 SOAP envelope structure
+    // Official AADE RgWsPublic2 SOAP Envelope
     const soapEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:rg="http://gr/gsis/rgwspublic2/RgWsPublic2.wsdl">
   <soapenv:Header>
@@ -55,22 +55,20 @@ module.exports = async function handler(req, res) {
   </soapenv:Body>
 </soapenv:Envelope>`.trim();
 
-    // Production AADE / GSIS Registry gateways
-    const candidateEndpoints = [
-      'https://www.gsis.gr/ws/rgwspublic2/RgWsPublic2',
-      'https://www.gsis.gr/ws/rgwspublic2/RgWsPublic2Port',
-      'https://www1.aade.gr/sgsis/RgWsPublic2/RgWsPublic2Port',
-      'https://www1.gsis.gr/sgsis/RgWsPublic2/RgWsPublic2Port'
+    // The official production endpoints for WSRegistry2
+    const endpoints = [
+      'https://www.gsis.gr/wsrgwspublic2/RgWsPublic2Port',
+      'https://www1.gsis.gr/wsrgwspublic2/RgWsPublic2Port'
     ];
 
     let xmlText = '';
-    let reachedUrl = '';
-    let responseStatus = 0;
+    let lastUrl = '';
+    let lastStatus = 0;
 
-    for (const endpoint of candidateEndpoints) {
-      reachedUrl = endpoint;
+    for (const url of endpoints) {
+      lastUrl = url;
       try {
-        const response = await fetch(endpoint, {
+        const response = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'text/xml; charset=utf-8',
@@ -81,29 +79,31 @@ module.exports = async function handler(req, res) {
           body: soapEnvelope,
         });
 
-        responseStatus = response.status;
+        lastStatus = response.status;
         const text = await response.text();
 
-        // Valid if it returns SOAP XML or standard XML (including SOAP faults / auth errors)
+        // Any XML or SOAP envelope returned (including faults or auth messages)
         if (text.includes('Envelope') || text.includes('Fault') || text.includes('faultstring') || text.includes('result_descr') || text.includes('rgWsPublic2')) {
           xmlText = text;
           break;
+        } else if (text.length > 0 && !text.includes('404')) {
+          xmlText = text;
+          break;
         }
-      } catch (e) {
-        console.warn(`Gateway timeout/error on ${endpoint}:`, e);
+      } catch (err) {
+        console.warn(`Connection failure on ${url}:`, err);
       }
     }
 
     if (!xmlText) {
       return res.status(502).json({
-        error: 'Unable to reach active GSIS service gateway.',
-        status: responseStatus,
-        lastUrl: reachedUrl,
-        responseExcerpt: xmlText ? xmlText.slice(0, 200) : null
+        error: 'Unable to connect to GSIS wsrgwspublic2 endpoint.',
+        status: lastStatus,
+        lastUrl
       });
     }
 
-    // Check for explicit SOAP Fault or GSIS business error
+    // Inspect if GSIS returned an error/fault
     if (xmlText.includes('faultstring') || xmlText.includes('error_descr')) {
       const faultMatch =
         xmlText.match(/<faultstring>(.*?)<\/faultstring>/i) ||
@@ -112,7 +112,7 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: faultMsg, raw: xmlText });
     }
 
-    // Tag extractor handling any namespace prefix
+    // Tag extractor handling any namespace
     const getTag = (tag) => {
       const regex = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${tag}[^>]*>([^<]*)</(?:[a-zA-Z0-9_-]+:)?${tag}>`, 'i');
       const match = xmlText.match(regex);
