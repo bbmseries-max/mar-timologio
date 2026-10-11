@@ -45,7 +45,7 @@ export class LocalDbService extends Dexie {
     this.version(2).stores({
       invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, updatedAt, createdAt',
       products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
-      settings: 'id',
+      settings: 'tenantId', 
       customers: 'id, tenantId, afm, legalName, phone, updatedAt',
     });
   }
