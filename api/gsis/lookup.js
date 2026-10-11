@@ -69,6 +69,7 @@ module.exports = async function handler(req, res) {
     });
 
     const xmlText = await response.text();
+    return res.status(200).json({ rawXml: xmlText });
 
     // Check for SOAP Faults or explicit error messages from GSIS
     if (xmlText.includes('faultstring') || xmlText.includes('error_descr')) {
