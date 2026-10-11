@@ -35,7 +35,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // GSIS RgWsPublic2 SOAP Envelope with WS-Security Header
+    // GSIS RgWsPublic2 SOAP Envelope
     const soapEnvelope = `
       <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:rg="http://gr/gsis/rgwspublic2/RgWsPublic2.wsdl">
         <soapenv:Header>
@@ -57,31 +57,33 @@ module.exports = async function handler(req, res) {
       </soapenv:Envelope>
     `.trim();
 
-    const gsisEndpoint = 'https://www1.gsis.gr/webtax2/ws/RgWsPublic2/RgWsPublic2';
+    // Correct production WebLogic path
+    const gsisEndpoint = 'https://www1.gsis.gr/webtax2/ws/RgWsPublic2/RgWsPublic2Version2';
 
     const response = await fetch(gsisEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': '',
+        'SOAPAction': 'rgWsPublic2Version2',
       },
       body: soapEnvelope,
     });
 
     const xmlText = await response.text();
-    return res.status(200).json({ rawXml: xmlText });
 
     // Check for SOAP Faults or explicit error messages from GSIS
     if (xmlText.includes('faultstring') || xmlText.includes('error_descr')) {
       const faultMatch =
-        xmlText.match(/<faultstring>(.*?)<\/faultstring>/) ||
-        xmlText.match(/<error_descr>(.*?)<\/error_descr>/);
+        xmlText.match(/<faultstring>(.*?)<\/faultstring>/i) ||
+        xmlText.match(/<error_descr>(.*?)<\/error_descr>/i);
       const faultMsg = faultMatch ? faultMatch[1] : 'GSIS SOAP Fault returned';
       return res.status(500).json({ error: faultMsg, raw: xmlText });
     }
 
+    // Helper to safely extract case-insensitive & namespaced tags
     const getTag = (tag) => {
-      const match = xmlText.match(new RegExp(`<${tag}>(.*?)</${tag}>`));
+      const regex = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${tag}>([^<]*)</(?:[a-zA-Z0-9_-]+:)?${tag}>`, 'i');
+      const match = xmlText.match(regex);
       return match ? match[1].trim() : '';
     };
 
@@ -93,7 +95,7 @@ module.exports = async function handler(req, res) {
     const postalAreaDescription = getTag('postal_area_description');
 
     if (!legalName) {
-      return res.status(200).json({ legalName: null, message: 'No record found in registry' });
+      return res.status(200).json({ legalName: null, message: 'No record found in registry', raw: xmlText });
     }
 
     return res.status(200).json({
