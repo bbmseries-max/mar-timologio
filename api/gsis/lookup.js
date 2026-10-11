@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // GSIS RgWsPublic2 SOAP Envelope
+    // GSIS RgWsPublic2 SOAP Envelope with WS-Security
     const soapEnvelope = `
       <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:rg="http://gr/gsis/rgwspublic2/RgWsPublic2.wsdl">
         <soapenv:Header>
@@ -56,19 +56,50 @@ module.exports = async function handler(req, res) {
       </soapenv:Envelope>
     `.trim();
 
-    // Official AADE WebLogic Endpoint
-    const gsisEndpoint = 'https://www1.gsis.gr/webtax2/rgwspublic2/RgWsPublic2Port';
+    // Standard production endpoint candidates according to AADE WSDL definitions
+    const endpoints = [
+      'https://www.gsis.gr/webtax2/ws/RgWsPublic2/RgWsPublic2',
+      'https://www1.aade.gr/webtax2/ws/RgWsPublic2/RgWsPublic2',
+      'https://www.gsis.gr/rgwspublic2/RgWsPublic2Port',
+      'https://www1.gsis.gr/webtax/rgwspublic2/RgWsPublic2Port'
+    ];
 
-    const response = await fetch(gsisEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': '',
-      },
-      body: soapEnvelope,
-    });
+    let xmlText = '';
+    let lastUrl = '';
+    let success = false;
 
-    const xmlText = await response.text();
+    for (const url of endpoints) {
+      lastUrl = url;
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/xml; charset=utf-8',
+            'SOAPAction': '',
+          },
+          body: soapEnvelope,
+        });
+
+        const text = await response.text();
+        // If it returns XML (SOAP response or fault) rather than HTML 404
+        if (text.includes('<?xml') || text.includes('<soapenv:') || text.includes('<env:') || text.includes('<soap:')) {
+          xmlText = text;
+          success = true;
+          break;
+        }
+      } catch (e) {
+        console.warn(`Failed trying endpoint ${url}:`, e);
+      }
+    }
+
+    if (!success) {
+      return res.status(502).json({
+        error: 'Unable to reach active GSIS RgWsPublic2 endpoint.',
+        attemptedEndpoints: endpoints,
+        lastUrl,
+        sampleOutput: xmlText.substring(0, 300)
+      });
+    }
 
     // Check for SOAP Faults or explicit error messages from GSIS
     if (xmlText.includes('faultstring') || xmlText.includes('error_descr')) {
@@ -79,15 +110,7 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: faultMsg, raw: xmlText });
     }
 
-    // If server still returned HTML instead of XML, report it cleanly
-    if (xmlText.startsWith('<!DOCTYPE') || xmlText.startsWith('<HTML') || xmlText.startsWith('<html')) {
-      return res.status(502).json({
-        error: 'GSIS returned an HTML error page rather than SOAP XML.',
-        raw: xmlText,
-      });
-    }
-
-    // Extract tags with optional namespaces
+    // Helper to safely extract case-insensitive and namespaced XML tags
     const getTag = (tag) => {
       const regex = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${tag}>([^<]*)</(?:[a-zA-Z0-9_-]+:)?${tag}>`, 'i');
       const match = xmlText.match(regex);
