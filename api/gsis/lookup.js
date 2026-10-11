@@ -34,70 +34,70 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // GSIS RgWsPublic2 SOAP Envelope with WS-Security
-    const soapEnvelope = `
-      <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:rg="http://gr/gsis/rgwspublic2/RgWsPublic2.wsdl">
-        <soapenv:Header>
-          <wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
-            <wsse:UsernameToken>
-              <wsse:Username>${gsisUser.trim()}</wsse:Username>
-              <wsse:Password>${gsisPassword.trim()}</wsse:Password>
-            </wsse:UsernameToken>
-          </wsse:Security>
-        </soapenv:Header>
-        <soapenv:Body>
-          <rg:rgWsPublic2Version2>
-            <rg:INPUT_REC>
-              <rg:afm_called>${cleanAfm}</rg:afm_called>
-              <rg:afm_called_by>${callingAfm.trim()}</rg:afm_called_by>
-            </rg:INPUT_REC>
-          </rg:rgWsPublic2Version2>
-        </soapenv:Body>
-      </soapenv:Envelope>
-    `.trim();
+    // Official GSIS RgWsPublic2 SOAP 1.1 Envelope
+    const soapEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:rg="http://gr/gsis/rgwspublic2/RgWsPublic2Version2.wsdl" xmlns:ns="http://gr/gsis/rgwspublic2/RgWsPublic2Version2">
+  <soapenv:Header>
+    <wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
+      <wsse:UsernameToken>
+        <wsse:Username>${gsisUser.trim()}</wsse:Username>
+        <wsse:Password>${gsisPassword.trim()}</wsse:Password>
+      </wsse:UsernameToken>
+    </wsse:Security>
+  </soapenv:Header>
+  <soapenv:Body>
+    <rg:rgWsPublic2Version2Net>
+      <rg:INPUT_REC>
+        <ns:afm_called>${cleanAfm}</ns:afm_called>
+        <ns:afm_called_by>${callingAfm.trim()}</ns:afm_called_by>
+      </rg:INPUT_REC>
+    </rg:rgWsPublic2Version2Net>
+  </soapenv:Body>
+</soapenv:Envelope>`.trim();
 
-    // Standard production endpoint candidates according to AADE WSDL definitions
+    // Canonical production targets defined by AADE WebLogic
     const endpoints = [
-      'https://www.gsis.gr/webtax2/ws/RgWsPublic2/RgWsPublic2',
-      'https://www1.aade.gr/webtax2/ws/RgWsPublic2/RgWsPublic2',
-      'https://www.gsis.gr/rgwspublic2/RgWsPublic2Port',
-      'https://www1.gsis.gr/webtax/rgwspublic2/RgWsPublic2Port'
+      'https://www1.gsis.gr/webtax2/ws/RgWsPublic2/RgWsPublic2SoapHttpPort',
+      'https://www1.gsis.gr/rgwspublic2/RgWsPublic2',
+      'https://www1.gsis.gr/webtax2/ws/RgWsPublic2/RgWsPublic2'
     ];
 
     let xmlText = '';
-    let lastUrl = '';
-    let success = false;
+    let chosenUrl = '';
+    let httpStatus = 0;
 
     for (const url of endpoints) {
-      lastUrl = url;
+      chosenUrl = url;
       try {
         const response = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'text/xml; charset=utf-8',
             'SOAPAction': '',
+            'User-Agent': 'Apache-HttpClient/4.5.5 (Java/1.8.0)',
+            'Accept': 'text/xml, text/html, */*'
           },
           body: soapEnvelope,
         });
 
+        httpStatus = response.status;
         const text = await response.text();
-        // If it returns XML (SOAP response or fault) rather than HTML 404
-        if (text.includes('<?xml') || text.includes('<soapenv:') || text.includes('<env:') || text.includes('<soap:')) {
+
+        // If WebLogic returns SOAP XML (either success or SOAP fault)
+        if (text.includes('Envelope') || text.includes('Fault') || text.includes('faultstring') || text.includes('result_descr')) {
           xmlText = text;
-          success = true;
           break;
         }
-      } catch (e) {
-        console.warn(`Failed trying endpoint ${url}:`, e);
+      } catch (err) {
+        console.warn(`Connection error on ${url}:`, err);
       }
     }
 
-    if (!success) {
+    if (!xmlText) {
       return res.status(502).json({
-        error: 'Unable to reach active GSIS RgWsPublic2 endpoint.',
-        attemptedEndpoints: endpoints,
-        lastUrl,
-        sampleOutput: xmlText.substring(0, 300)
+        error: 'AADE gateway did not return valid SOAP XML.',
+        lastUrl: chosenUrl,
+        httpStatus
       });
     }
 
@@ -110,9 +110,9 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: faultMsg, raw: xmlText });
     }
 
-    // Helper to safely extract case-insensitive and namespaced XML tags
+    // Safe XML value extractor ignoring namespace prefixes
     const getTag = (tag) => {
-      const regex = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${tag}>([^<]*)</(?:[a-zA-Z0-9_-]+:)?${tag}>`, 'i');
+      const regex = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${tag}[^>]*>([^<]*)</(?:[a-zA-Z0-9_-]+:)?${tag}>`, 'i');
       const match = xmlText.match(regex);
       return match ? match[1].trim() : '';
     };
@@ -125,7 +125,11 @@ module.exports = async function handler(req, res) {
     const postalAreaDescription = getTag('postal_area_description');
 
     if (!legalName) {
-      return res.status(200).json({ legalName: null, message: 'No record found in registry', raw: xmlText });
+      return res.status(200).json({
+        legalName: null,
+        message: 'No record found in registry',
+        raw: xmlText,
+      });
     }
 
     return res.status(200).json({
