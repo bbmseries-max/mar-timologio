@@ -1,5 +1,4 @@
 module.exports = async function handler(req, res) {
-  // CORS configuration
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -57,14 +56,14 @@ module.exports = async function handler(req, res) {
       </soapenv:Envelope>
     `.trim();
 
-    // Correct production WebLogic path
-    const gsisEndpoint = 'https://www1.gsis.gr/webtax2/ws/RgWsPublic2/RgWsPublic2Version2';
+    // Official AADE WebLogic Endpoint
+    const gsisEndpoint = 'https://www1.gsis.gr/webtax2/rgwspublic2/RgWsPublic2Port';
 
     const response = await fetch(gsisEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': 'rgWsPublic2Version2',
+        'SOAPAction': '',
       },
       body: soapEnvelope,
     });
@@ -80,7 +79,15 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: faultMsg, raw: xmlText });
     }
 
-    // Helper to safely extract case-insensitive & namespaced tags
+    // If server still returned HTML instead of XML, report it cleanly
+    if (xmlText.startsWith('<!DOCTYPE') || xmlText.startsWith('<HTML') || xmlText.startsWith('<html')) {
+      return res.status(502).json({
+        error: 'GSIS returned an HTML error page rather than SOAP XML.',
+        raw: xmlText,
+      });
+    }
+
+    // Extract tags with optional namespaces
     const getTag = (tag) => {
       const regex = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${tag}>([^<]*)</(?:[a-zA-Z0-9_-]+:)?${tag}>`, 'i');
       const match = xmlText.match(regex);
