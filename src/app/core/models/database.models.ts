@@ -22,6 +22,7 @@ export interface LocalInvoiceRecord {
 export interface CompanySettingsRecord {
   id: string;
   afm: string;
+  branch: number;
   legalName: string;
   doy: string;
   aadeUserId: string;

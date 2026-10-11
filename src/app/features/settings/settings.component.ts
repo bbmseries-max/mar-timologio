@@ -169,7 +169,20 @@ export class SettingsComponent implements OnInit {
 
     const saved = await this.db.getSettingsForTenant(tenantId);
     if (saved) {
-      this.form.patchValue(saved as any);
+      this.form.patchValue({
+    afm: saved.afm ? saved.afm.replace(/\D/g, '') : '',
+    doy: saved.doy ?? '',
+    legalName: saved.legalName ?? '',
+    branch: saved.branch ?? 0,
+    street: saved.street ?? '',
+    number: saved.number ?? '',
+    postalCode: saved.postalCode ?? '',
+    city: saved.city ?? '',
+    defaultSeries: saved.defaultSeries ?? 'ΕΠΙΣΤΡ',
+    aadeUserId: saved.aadeUserId ?? '',
+    aadeSubscriptionKey: saved.aadeSubscriptionKey ?? '',
+    isProduction: !!saved.isProduction,
+  });
     }
   }
 
@@ -184,9 +197,11 @@ export class SettingsComponent implements OnInit {
 
     this.isSaving.set(true);
     try {
+      const effectiveTenantId = tenantId || 'tenant_default';
       const val = this.form.getRawValue();
       await this.db.saveSettingsForTenant(tenantId, {
-        tenantId,
+        //id: effectiveTenantId,       // Satisfies Dexie schema: settings: 'id'
+        tenantId: effectiveTenantId,
         afm: val.afm!,
         doy: val.doy!,
         legalName: val.legalName!,

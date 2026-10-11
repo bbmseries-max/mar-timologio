@@ -1009,14 +1009,29 @@ export class InvoiceBuilderComponent implements OnInit {
     }
 
     const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
+    const shopSettings = await this.db.getSettingsForTenant(tenantId);
+if (shopSettings?.afm && rawAfm === shopSettings.afm.replace(/\D/g, '')) {
+  // It's your own company AFM, not a customer
+  alert('Το Α.Φ.Μ. αυτό ανήκει στο κατάστημά σας (Εκδότης), όχι σε πελάτη/παραλήπτη.');
+  return;
+}
 
     try {
       const cachedCustomer = await this.db.getCustomerByAfm(tenantId, rawAfm);
-      if (cachedCustomer) {
-        this.populateCustomerForm(cachedCustomer);
-        this.gsisError.set(null);
-        return;
-      }
+if (cachedCustomer) {
+  this.populateCustomerForm({
+    legalName: cachedCustomer.legalName,
+    doy: cachedCustomer.doy,
+    address: {
+      street: cachedCustomer.address?.street || (cachedCustomer as any).street || '',
+      number: cachedCustomer.address?.number || (cachedCustomer as any).number || '',
+      postalCode: cachedCustomer.address?.postalCode || (cachedCustomer as any).postalCode || '',
+      city: cachedCustomer.address?.city || (cachedCustomer as any).city || '',
+    }
+  });
+  this.gsisError.set(null);
+  return;
+}
     } catch (e) {
       console.warn('[GSIS] Local cache check failed:', e);
     }

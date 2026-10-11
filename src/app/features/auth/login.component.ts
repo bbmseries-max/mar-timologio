@@ -1,7 +1,7 @@
 import { Component, ChangeDetectionStrategy, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { AuthTenantService } from '@core/services/auth-tenant.service';
+import { AuthTenantService, AuthUser, TenantProfile } from '@core/services/auth-tenant.service';
 
 @Component({
   selector: 'maranth-login',
@@ -92,7 +92,24 @@ export class LoginComponent {
     this.loading.set(true);
 
     const { email, tenantPreset } = this.loginForm.getRawValue();
-    await this.auth.login(email!, tenantPreset!);
+    const emailVal = email || 'admin@maranth.gr';
+    const tenantIdVal = tenantPreset || 'tenant_default';
+
+const user: AuthUser = {
+  id: emailVal,
+  email: emailVal,
+  displayName: emailVal.split('@')[0],
+  role: 'admin',
+};
+
+const tenant: TenantProfile = {
+  id: tenantIdVal,
+  name: tenantIdVal,
+  afm: '', // Will be completed/overwritten in Settings
+  doy: '',
+};
+
+await this.auth.login(user, tenant);
     this.loading.set(false);
   }
 }
