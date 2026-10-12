@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, from, of, throwError } from 'rxjs';
-import { switchMap, catchError, delay } from 'rxjs/operators';
+import { switchMap, catchError, delay, tap } from 'rxjs/operators';
 import { isValidGreekAfm } from '../utils/fiscal-engine';
 import { LocalDbService } from './local-db.service';
 import { AuthTenantService } from './auth-tenant.service';
@@ -10,14 +10,14 @@ export interface GsisCompanyRecord {
   afm: string;
   legalName: string;
   commercialTitle?: string;
-  doy: string;
-  doyDescr: string;
-  postalAddress: string;
-  postalAddressNo: string;
-  postalZipCode: string;
-  postalAreaDescription: string;
-  firmActivationDate?: string;
-  isNormalVatRegime: boolean;
+  doy?: string;
+  doyDescr?: string;
+  legalStatus?: string;
+  postalAddress?: string;
+  postalAddressNo?: string;
+  postalZipCode?: string;
+  postalAreaDescription?: string;
+  isNormalVatRegime?: boolean;
   active: boolean;
 }
 
@@ -33,7 +33,7 @@ export class GsisLookupService {
    * Priority:
    * 1. Own Store Settings in Dexie
    * 2. Saved Customers / Suppliers in Dexie
-   * 3. Backend GSIS Proxy (if available)
+   * 3. Backend GSIS Proxy (AADE / Cloudflare Worker)
    * 4. Offline Fallback
    */
   public lookupAfm(afm: string): Observable<GsisCompanyRecord> {
@@ -45,14 +45,23 @@ export class GsisLookupService {
 
     return from(this.checkLocalDexieStorage(cleanAfm)).pipe(
       switchMap((localRecord) => {
-        // If found in local Dexie, return it immediately without network requests
+        // 1. Instant hit from Dexie cache
         if (localRecord) {
           return of(localRecord);
         }
 
-        // Otherwise try the proxy, and fallback if offline/unreachable
+        // 2. Fetch from proxy endpoint
         return this.http.get<GsisCompanyRecord>(`${this.apiEndpoint}?afm=${cleanAfm}`).pipe(
-          catchError(() => {
+          tap((remoteRecord) => {
+            // Cache successful lookups to Dexie for offline support and zero-latency hits
+            if (remoteRecord && remoteRecord.legalName) {
+              this.saveToDexieStorage(remoteRecord).catch((err) =>
+                console.warn('Failed to cache GSIS record in Dexie:', err)
+              );
+            }
+          }),
+          catchError((httpErr) => {
+            console.warn(`GSIS network lookup failed for ${cleanAfm}:`, httpErr);
             return this.getMockFallbackRecord(cleanAfm);
           })
         );
@@ -61,24 +70,24 @@ export class GsisLookupService {
   }
 
   /**
-   * Checks Dexie for your own shop profile or cached suppliers/customers.
+   * Checks Dexie for shop profile or cached suppliers/customers.
    */
   private async checkLocalDexieStorage(afm: string): Promise<GsisCompanyRecord | null> {
     const tenantId = this.auth.currentTenantId();
 
-   // 1. Is this your own shop from /settings?
+    // 1. Is this your own shop from /settings?
     const settings = await this.db.getSettingsForTenant(tenantId);
     if (settings && settings.afm === afm) {
-      const s = settings as any; // Safe fallback for flat or nested models
+      const s = settings as any;
       return {
         afm: settings.afm,
-        legalName: settings.legalName,
-        commercialTitle: s.tradeName || settings.legalName,
-        doy: settings.doy || '',
-        doyDescr: settings.doy || '',
-        postalAddress: s.street || s.address?.street || '',
-        postalAddressNo: s.number || s.address?.number || '',
-        postalZipCode: s.postalCode || s.address?.postalCode || '',
+        legalName: settings.legalName || s.name || '',
+        commercialTitle: s.tradeName || s.commercialTitle || settings.legalName || '',
+        doy: settings.doy || s.taxOffice || '',
+        doyDescr: settings.doy || s.taxOffice || '',
+        postalAddress: s.street || s.address?.street || s.address || '',
+        postalAddressNo: s.number || s.address?.number || s.addressNo || '',
+        postalZipCode: s.postalCode || s.address?.postalCode || s.zipCode || '',
         postalAreaDescription: s.city || s.address?.city || '',
         isNormalVatRegime: true,
         active: true,
@@ -88,31 +97,61 @@ export class GsisLookupService {
     // 2. Is this an existing customer/supplier saved in Dexie?
     const cachedCustomer = await this.db.getCustomerByAfm(tenantId, afm);
     if (cachedCustomer) {
+      const c = cachedCustomer as any;
       return {
         afm: cachedCustomer.afm,
-        legalName: cachedCustomer.legalName,
-        commercialTitle: cachedCustomer.tradeName || cachedCustomer.legalName,
-        doy: cachedCustomer.doy || '',
-        doyDescr: cachedCustomer.doy || '',
-        postalAddress: cachedCustomer.address?.street || '',
-        postalAddressNo: cachedCustomer.address?.number || '',
-        postalZipCode: cachedCustomer.address?.postalCode || '',
-        postalAreaDescription: cachedCustomer.address?.city || '',
-        isNormalVatRegime: true,
-        active: true,
+        legalName: cachedCustomer.legalName || c.name || '',
+        commercialTitle: c.tradeName || c.commercialTitle || cachedCustomer.legalName || '',
+        doy: cachedCustomer.doy || c.taxOffice || '',
+        doyDescr: cachedCustomer.doy || c.taxOffice || '',
+        postalAddress: c.address?.street || c.street || c.postalAddress || '',
+        postalAddressNo: c.address?.number || c.number || c.postalAddressNo || '',
+        postalZipCode: c.address?.postalCode || c.postalCode || c.postalZipCode || '',
+        postalAreaDescription: c.address?.city || c.city || c.postalAreaDescription || '',
+        isNormalVatRegime: c.isNormalVatRegime ?? true,
+        active: c.active ?? true,
       };
     }
 
     return null;
   }
 
+/**
+   * Persists newly fetched AADE records into Dexie storage via LocalDbService.
+   */
+  private async saveToDexieStorage(record: GsisCompanyRecord): Promise<void> {
+    const tenantId = this.auth.currentTenantId();
+    if (!tenantId || !record.afm) return;
+
+    const existing = await this.db.getCustomerByAfm(tenantId, record.afm);
+    const now = new Date().toISOString();
+
+    await this.db.saveCustomer({
+      ...existing,
+      id: existing?.id || crypto.randomUUID(),
+      tenantId,
+      afm: record.afm,
+      legalName: record.legalName,
+      tradeName: record.commercialTitle || record.legalName,
+      doy: record.doyDescr || record.doy || '',
+      address: {
+        street: record.postalAddress || existing?.address?.street || '',
+        number: record.postalAddressNo || existing?.address?.number || '',
+        postalCode: record.postalZipCode || existing?.address?.postalCode || '',
+        city: record.postalAreaDescription || existing?.address?.city || '',
+      },
+      isNormalVatRegime: record.isNormalVatRegime ?? true,
+      active: record.active ?? true,
+      updatedAt: now,
+    } as Parameters<LocalDbService['saveCustomer']>[0]);
+  }
+
   /**
-   * Fallback for unknown external AFMs when no backend GSIS service is configured.
+   * Fallback for unknown external AFMs when network is unavailable.
    */
   private getMockFallbackRecord(afm: string): Observable<GsisCompanyRecord> {
-    // If not found anywhere, return empty details so the user can type the real name manually
     const record: GsisCompanyRecord = {
-      afm: afm,
+      afm,
       legalName: '',
       commercialTitle: '',
       doy: '',

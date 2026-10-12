@@ -116,6 +116,7 @@ export class LocalDbService extends Dexie {
       .limit(8)
       .toArray();
   }
+  
 
   public async getCustomerByAfm(tenantId: string, afm: string): Promise<LocalCustomerRecord | undefined> {
     return this.customers
