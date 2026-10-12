@@ -14,7 +14,7 @@ module.exports = async function handler(req, res) {
   }
 
   // Replace with your exact Cloudflare Worker URL
-  const workerBaseUrl = 'https://gsis-lookup.<your-subdomain>.workers.dev';
+  const workerBaseUrl = 'https://gsis-lookup.bbmseries.workers.dev/';
 
   try {
     const upstream = await fetch(`${workerBaseUrl}/?afm=${encodeURIComponent(afm.trim())}`);
