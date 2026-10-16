@@ -1,6 +1,6 @@
 // src/app/core/models/tenant-integration.models.ts
 
-export type DocumentTypePreset = '9.1' | '1.1' | '2.1';
+export type DocumentTypePreset = '9.3' | '1.1' | '2.1';
 
 export interface ExternalReturnItem {
   sku?: string;

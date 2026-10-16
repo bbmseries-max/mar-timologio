@@ -5,8 +5,11 @@ import {
   computed,
   inject,
   effect,
+  OnDestroy,
   OnInit,
 } from '@angular/core';
+import { Subject } from 'rxjs';
+import { takeUntil, debounceTime } from 'rxjs/operators';
 import { MyDataService } from '@core/services/mydata.service';
 import { ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -53,6 +56,7 @@ export class InvoiceBuilderComponent implements OnInit {
   private readonly cartBridge = inject(CartBridgeService);
   private readonly gsisService = inject(GsisLookupService);
   private readonly route = inject(ActivatedRoute);
+  private readonly destroy$ = new Subject<void>();
   private readonly tenantIntegration = inject(TenantIntegrationService);
 
   public readonly gsisLoading = signal<boolean>(false);
@@ -67,7 +71,8 @@ export class InvoiceBuilderComponent implements OnInit {
   public readonly searchResults = signal<Product[]>([]);
   public readonly isSearching = signal<boolean>(false);
 
-  private handoverReceived = false;
+  private handoverConsumed = false;
+public handoverReceived = false;
 
   public readonly computedTotals = computed(() =>
     calculateInvoiceTotals(this.lineItemsSignal())
@@ -164,13 +169,15 @@ get isPureDispatch(): boolean {
 }
 
   constructor() {
+    // 1. Reactive bridge listener for background BroadcastChannel / postMessage handovers
     effect(() => {
-  const handover = this.tenantIntegration.pendingHandover();
-  if (handover) {
-    this.applyIncomingHandover(handover);
-    this.tenantIntegration.clearPending();
-  }
-});
+      const handover = this.tenantIntegration.pendingHandover();
+      if (handover && !this.handoverConsumed) {
+        this.handoverConsumed = true;
+        this.applyIncomingHandover(handover);
+        this.tenantIntegration.clearPending();
+      }
+    });
   }
 
   public checkFormValidity(): void {
@@ -197,23 +204,14 @@ get isPureDispatch(): boolean {
   async ngOnInit(): Promise<void> {
     const currentTenantId = this.auth.currentTenantId();
 
-    // 1. Listen for incoming POS cart
-    this.cartBridge.cart$.subscribe((payload: any) => {
-      if (payload && payload.items && payload.items.length > 0) {
-        this.applyIncomingHandover(payload as ExternalDocumentHandover);
-      }
-    });
-    this.cartBridge.checkUrlPayload();
-
-    // 2. Populate Issuer Address and Default Series from Tenant Settings
+    // 1. Pre-load Tenant Business Defaults (Address & Base Series)
+    let tenantDefaultSeries = 'Α';
     if (currentTenantId) {
       const myBusiness = await this.db.getSettingsForTenant(currentTenantId);
       if (myBusiness) {
         const b = myBusiness as any;
-        // Default to 'A' (or whatever is in settings), NOT 'ΕΠΙΣΤΡ'
-        const initialSeries = b.defaultSeries || 'Α';
-        this.invoiceForm.get('series')?.setValue(initialSeries, { emitEvent: true });
-        
+        tenantDefaultSeries = b.defaultSeries || 'Α';
+
         this.invoiceForm.get('movement.addressFrom')?.patchValue({
           street: b.street || '',
           number: b.number || '',
@@ -223,47 +221,78 @@ get isPureDispatch(): boolean {
       }
     }
 
-    // 3. Draft restoration
+    // 2. Resolve Data Source (Priority: Direct Bridge -> Draft ID -> Empty Seed)
     const targetDraftId =
       this.route.snapshot.paramMap.get('id') ||
       this.route.snapshot.queryParamMap.get('draftId');
 
-    if (!this.handoverReceived) {
-      if (targetDraftId) {
-        const draft = await this.db.getInvoiceById(targetDraftId);
-        if (draft) {
-          this.restoreDraft(draft);
-        } else {
-          this.seedInitialLine();
-        }
+    // Trigger URL parse (void return)
+    this.cartBridge.checkUrlPayload();
+
+    if (this.tenantIntegration.pendingHandover() && !this.handoverConsumed) {
+      this.handoverConsumed = true;
+      const handover = this.tenantIntegration.pendingHandover()!;
+      this.applyIncomingHandover(handover);
+      this.tenantIntegration.clearPending();
+    } else if (targetDraftId) {
+      const draft = await this.db.getInvoiceById(targetDraftId);
+      if (draft) {
+        this.restoreDraft(draft);
       } else {
-        this.seedInitialLine();
+        this.applyDefaultSeriesAndSeed(tenantDefaultSeries);
       }
+    } else if (!this.handoverConsumed) {
+      this.applyDefaultSeriesAndSeed(tenantDefaultSeries);
     }
 
-    // 4. Initial sequential number calculation
+    // 3. Calculate initial document sequential number
     await this.updateNextDocumentNumber();
 
-    // 5. Independent listener: Series changes -> update sequential number
-    this.invoiceForm.get('series')?.valueChanges.subscribe(async (newSeries) => {
-      if (newSeries) {
-        await this.updateNextDocumentNumber();
-      }
-    });
+    // 4. Series change listener -> Auto calculate next AA
+    this.invoiceForm.get('series')?.valueChanges
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(async (newSeries) => {
+        if (newSeries) {
+          await this.updateNextDocumentNumber();
+        }
+      });
 
-    // 6. Independent listener: Document type changes -> toggle movement panel
+    // 5. Document Type change listener -> Adjust Logistics / Movement rules
     this.updateMovementDocState(this.invoiceForm.get('invoiceType')?.value);
-    this.invoiceForm.get('invoiceType')?.valueChanges.subscribe((type) => {
-      this.updateMovementDocState(type);
-    });
+    this.invoiceForm.get('invoiceType')?.valueChanges
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((type) => {
+        this.updateMovementDocState(type);
+      });
 
-    // 7. Combined global form listener: validity check & debounced auto-save
-    this.invoiceForm.valueChanges.subscribe(() => {
-      this.checkFormValidity();
-      this.autoSaveStatus.set('Αποθήκευση...');
-      this.debouncedSave();
-    });
+    // 6. Global Form listener -> Validity Audit & Auto-save (debounced)
+    this.invoiceForm.valueChanges
+      .pipe(
+        takeUntil(this.destroy$),
+        debounceTime(300)
+      )
+      .subscribe(() => {
+        this.checkFormValidity();
+        this.autoSaveStatus.set('Αποθήκευση...');
+        this.debouncedSave();
+      });
   }
+
+  private applyDefaultSeriesAndSeed(defaultSeries: string): void {
+    const currentSeries = this.invoiceForm.get('series')?.value;
+    if (!currentSeries) {
+      this.invoiceForm.get('series')?.setValue(defaultSeries, { emitEvent: false });
+    }
+    if (this.linesArray.length === 0) {
+      this.seedInitialLine();
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
 
   private restoreDraft(draft: LocalInvoiceRecord): void {
     try {
@@ -306,7 +335,7 @@ get isPureDispatch(): boolean {
 
   private applyIncomingHandover(data: ExternalDocumentHandover): void {
     if (!data || !data.items || data.items.length === 0) return;
-    this.handoverReceived = true;
+    this.handoverConsumed = true;
 
     this.setSupplierReturnPreset();
 

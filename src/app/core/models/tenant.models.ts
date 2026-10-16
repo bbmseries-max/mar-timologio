@@ -10,7 +10,7 @@ export interface TenantFeatureFlags {
   enableBarcodeScanner: boolean;
   enableGoodsMovement: boolean;
   enableThermalReceipt: boolean;
-  defaultDocType: '1.1' | '1.2' | '2.1' | '9.1';
+  defaultDocType: '1.1' | '2.1' | '9.3';
   allowOfflineDrafts: boolean;
 }
 
@@ -65,6 +65,6 @@ export interface TenantSubscription {
   status: SubscriptionStatus;
   validUntil: string; // ISO date
   gracePeriodEndsAt?: string; // ISO date
-  maxMonthlyDocuments?: number;
+  maxMonthlyDocuments?: number;          // <--- Add this
   currentMonthDocumentCount: number;
 }

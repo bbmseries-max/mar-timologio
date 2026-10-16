@@ -1,13 +1,16 @@
 import { Injectable, signal, inject, OnDestroy, effect, NgZone } from '@angular/core';
+import { Router } from '@angular/router';
 import { LocalDbService } from './local-db.service';
 import { AuthTenantService } from './auth-tenant.service';
 import { isValidGreekAfm } from '../utils/fiscal-engine';
 import { ExternalDocumentHandover, HandoverAck } from '../models/handover.model';
+import { SubscriptionStatus, TenantSubscription, TenantFeatureFlags } from '../models/tenant.models';
 
 @Injectable({ providedIn: 'root' })
 export class TenantIntegrationService implements OnDestroy {
   private readonly db = inject(LocalDbService);
   private readonly auth = inject(AuthTenantService);
+  private readonly router = inject(Router);
   private readonly ngZone = inject(NgZone);
 
   private tenantChannel: BroadcastChannel | null = null;
@@ -21,6 +24,7 @@ export class TenantIntegrationService implements OnDestroy {
   private readonly allowedOrigins = [
     'http://localhost:4200',
     'http://127.0.0.1:4200',
+    'http://localhost:3000',
     'https://maranth.vercel.app',
     'https://maranth.gr',
     'https://www.maranth.gr',
@@ -98,6 +102,9 @@ export class TenantIntegrationService implements OnDestroy {
               event.origin
             );
           }
+
+          // Automatically navigate to builder if not already there
+          this.router.navigate(['/invoices/new']);
         } else {
           if (event.source && 'postMessage' in event.source) {
             (event.source as Window).postMessage(
@@ -129,6 +136,9 @@ export class TenantIntegrationService implements OnDestroy {
           status: 'ACCEPTED',
           importedItemCount: validationResult.data.items.length,
         });
+
+        // Automatically route to builder
+        this.router.navigate(['/invoices/new']);
       } else {
         this.sendAck(targetChannel, {
           messageId: payload?.messageId || 'unknown',
@@ -140,6 +150,9 @@ export class TenantIntegrationService implements OnDestroy {
     });
   }
 
+  /**
+   * Validates subscription lifecycle, feature permissions, and fiscal data.
+   */
   private async validateAndEnrich(
     payload: any
   ): Promise<{ success: boolean; data?: ExternalDocumentHandover; error?: string }> {
@@ -147,9 +160,34 @@ export class TenantIntegrationService implements OnDestroy {
       return { success: false, error: 'Κενό αντικείμενο δεδομένων handover.' };
     }
 
-    const docType = payload.documentType || payload.invoiceType || '9.1';
+    // 1. Subscription & Feature Flag Enforcement
+    // 1. Subscription Enforcement based on your exact interface
+const tenant = this.auth.activeTenant();
+if (tenant) {
+  const sub = tenant.subscription;
+  if (sub) {
+    const status: SubscriptionStatus = sub.status;
 
-    // Normalize customer / supplier block
+    if (status === 'READ_ONLY' || status === 'SUSPENDED') {
+      return {
+        success: false,
+        error: `Η συνδρομή του καταστήματος (${tenant.name}) είναι σε κατάσταση ${status}. Η έκδοση παραστατικών έχει ανασταλεί.`,
+      };
+    }
+
+    // Check if subscription has expired
+    if (sub.validUntil && new Date(sub.validUntil) < new Date() && status !== 'GRACE_PERIOD') {
+      return {
+        success: false,
+        error: `Η συνδρομή σας (${sub.planName}) έχει λήξει στις ${sub.validUntil}. Απαιτείται ανανέωση.`,
+      };
+    }
+  }
+}
+
+    const docType = payload.documentType || payload.invoiceType || '1.1';
+
+    // 2. Validate Counterpart AFM
     const party = payload.supplier || payload.customer;
     let cleanAfm = party?.afm ? String(party.afm).replace(/\D/g, '') : '';
 
@@ -163,12 +201,12 @@ export class TenantIntegrationService implements OnDestroy {
     }
 
     if (!payload.items || payload.items.length === 0) {
-      return { success: false, error: 'Το καλάθι είναι κενό.' };
+      return { success: false, error: 'Το καλάθι του POS είναι κενό.' };
     }
 
     const tenantId = payload.tenantId || this.auth.currentTenantId();
 
-    // Enrich from Dexie customer directory if available
+    // 3. Enrich customer profile from Dexie cache if available
     if (cleanAfm) {
       const cachedCustomer = await this.db.getCustomerByAfm(tenantId, cleanAfm);
       if (cachedCustomer && party) {
