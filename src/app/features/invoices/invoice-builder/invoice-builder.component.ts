@@ -5,7 +5,6 @@ import {
   computed,
   inject,
   effect,
-  OnDestroy,
   OnInit,
 } from '@angular/core';
 import { Subject } from 'rxjs';
@@ -33,7 +32,7 @@ import { AadeSerializerService } from '@core/services/aade-serializer.service';
 import { LocalInvoiceRecord, Product } from '@core/models/database.models';
 import { InvoicePrintComponent, PrintableInvoiceData } from '../invoice-print/invoice-print.component';
 import { ExternalDocumentHandover } from '@core/models/handover.model';
-import { buildInvoicesDocXml } from '@core/services/mydata-xml-builder';
+//import { buildInvoicesDocXml } from '@core/services/mydata-xml-builder';
 
 @Component({
   selector: 'maranth-invoice-builder',
@@ -119,24 +118,10 @@ public handoverReceived = false;
     }),
     lines: this.fb.array([]),
   });
-
-  public readonly isAfmValid = computed(() => {
-    const afm = this.invoiceForm.get('customer.afm')?.value;
-    return Boolean(afm && isValidGreekAfm(afm));
-  });
   
 // Helper: read the current type safely
 private get currentDocType(): string {
   return String(this.invoiceForm?.get('invoiceType')?.value ?? '').trim();
-}
-
-/**
- * Any document that moves physical goods and requires the Goods Movement Panel:
- * 9.1, 9.3 (pure dispatches) and 1.2 (combined invoice + dispatch)
- */
-get isMovementDocument(): boolean {
-  const type = this.currentDocType;
-  return type === '1.1' || type === '9.1' || type === '9.3';
 }
 
 /**
@@ -148,24 +133,28 @@ get isPureDispatch(): boolean {
   return type === '9.1' || type === '9.3';
 }
 
-  get customerAfmValue(): string {
-    return this.invoiceForm.get('customer.afm')?.value || '';
-  }
+ get customerAfmValue(): string {
+  return this.invoiceForm.get('customer.afm')?.value || '';
+}
 
-  get linesArray(): FormArray {
-    return this.invoiceForm.get('lines') as FormArray;
-  }
+get linesArray(): FormArray {
+  return this.invoiceForm.get('lines') as FormArray;
+}
 
-  get afmInvalid(): boolean {
-    const ctrl = this.invoiceForm.get('customer.afm');
-    return !!(ctrl?.touched && ctrl?.errors?.['invalidGreekAfm']);
-  }
+get afmControl() {
+  return this.invoiceForm.get('customer.afm');
+}
 
-  get isAfmInvalid(): boolean {
-  const ctrl = this.invoiceForm.get('customer.afm');
+get isAfmValid(): boolean {
+  const ctrl = this.afmControl;
+  return Boolean(ctrl && ctrl.valid && ctrl.value);
+}
+
+get isAfmInvalid(): boolean {
+  const ctrl = this.afmControl;
   if (!ctrl) return false;
   const len = String(ctrl.value || '').trim().length;
-  return ctrl.hasError('invalidGreekAfm') && (ctrl.touched || len >= 9);
+  return ctrl.invalid && (ctrl.touched || len >= 9);
 }
 
   constructor() {
@@ -179,6 +168,17 @@ get isPureDispatch(): boolean {
       }
     });
   }
+
+  public onProductsImported(count: number): void {
+  this.showImportModal.set(false);
+  this.autoSaveStatus.set(`Εισήχθησαν ${count} προϊόντα με επιτυχία!`);
+  
+  // Re-run search if user already had a query typed in
+  const query = this.searchQuery().trim();
+  if (query.length >= 2) {
+    this.onSearchChange(query);
+  }
+}
 
   public checkFormValidity(): void {
   const getInvalidControls = (formGroup: any, parentKey = ''): void => {
@@ -533,15 +533,19 @@ get isPureDispatch(): boolean {
   }
 
   private updateMovementDocState(type: string | null | undefined): void {
-    const isMov = type === '1.1' || type === '9.1' || type === '9.3';
-    // this.isMovementDocument.set(isMov);
-    const movementCtrl = this.invoiceForm.get('movement');
-    if (isMov) {
-      movementCtrl?.enable({ emitEvent: false });
-    } else {
-      movementCtrl?.disable({ emitEvent: false });
-    }
+  const isMov = type === '9.1' || type === '9.3' || type === '1.2';
+  const movementCtrl = this.invoiceForm.get('movement');
+  if (isMov) {
+    movementCtrl?.enable({ emitEvent: false });
+  } else {
+    movementCtrl?.disable({ emitEvent: false });
   }
+}
+
+get isMovementDocument(): boolean {
+  const type = this.currentDocType;
+  return type === '9.1' || type === '9.3' || type === '1.2';
+}
 
   public seedInitialLine(): void {
     this.linesArray.clear();
@@ -576,6 +580,7 @@ get isPureDispatch(): boolean {
   }
 
   public async onSaveDraftManually(): Promise<void> {
+    this.syncLines();
     await this.persistDraft();
     this.autoSaveStatus.set('Αποθηκεύτηκε επιτυχώς!');
   }
@@ -952,64 +957,61 @@ if (cachedCustomer) {
   }
 
   public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
-    try {
-      const result = await this.myData.transmitInvoice(invoice);
+  try {
+    const result = await this.myData.transmitInvoice(invoice);
 
-      if (result.success && result.mark) {
-        console.log(`myDATA Transmission Successful! MARK: ${result.mark}, UID: ${result.uid}`);
+    if (result.success && result.mark) {
+      console.log(`myDATA Transmission Successful! MARK: ${result.mark}, UID: ${result.uid}`);
 
-        invoice.mark = result.mark;
-        invoice.uid = result.uid;
-        invoice.qrUrl = result.qrUrl ?? invoice.qrUrl ?? '';
-        invoice.transmissionStatus = 'TRANSMITTED';
-        invoice.updatedAt = Date.now();
+      invoice.mark = result.mark;
+      invoice.uid = result.uid;
+      invoice.qrUrl = result.qrUrl ?? invoice.qrUrl ?? '';
+      invoice.transmissionStatus = 'TRANSMITTED';
+      invoice.updatedAt = Date.now();
 
-        const invoiceId = invoice.id != null ? String(invoice.id) : null;
-        if (invoiceId) {
-          await this.db.invoices.update(invoiceId, {
-            mark: result.mark,
-            uid: result.uid,
-            qrUrl: invoice.qrUrl,
-            transmissionStatus: 'TRANSMITTED',
-            updatedAt: invoice.updatedAt,
-          });
-          this.autoSaveStatus.set(`Εκδόθηκε με επιτυχία! ΜΑΡΚ: ${result.mark}`);
-        }
-
-        // Show print modal...
-        // ... (existing printableData.set logic) ...
-
-        // Prepare the counter for the NEXT invoice automatically:
-        const tenantId = this.auth.currentTenantId();
-        if (tenantId) {
-          const nextAa = await this.db.getNextDocumentNumber(tenantId, invoice.series);
-          // Set up a fresh draft ID and update documentNumber
-          this.currentDraftId.set(crypto.randomUUID());
-          this.invoiceForm.get('documentNumber')?.setValue(nextAa, { emitEvent: false });
-        }
-      } else {
-        console.warn('myDATA Transmission rejected:', result.error);
-        const invoiceId = invoice.id != null ? String(invoice.id) : null;
-        if (invoiceId) {
-          await this.db.invoices.update(invoiceId, {
-            transmissionStatus: 'FAILED',
-            updatedAt: Date.now(),
-          });
-        }
-        this.autoSaveStatus.set(`Αποτυχία myDATA: ${result.error || 'Σφάλμα myDATA'}`);
+      const invoiceId = invoice.id != null ? String(invoice.id) : null;
+      if (invoiceId) {
+        await this.db.invoices.update(invoiceId, {
+          mark: result.mark,
+          uid: result.uid,
+          qrUrl: invoice.qrUrl,
+          transmissionStatus: 'TRANSMITTED',
+          updatedAt: invoice.updatedAt,
+        });
+        this.autoSaveStatus.set(`Εκδόθηκε με επιτυχία! ΜΑΡΚ: ${result.mark}`);
       }
+
+      // 1. Trigger Print Modal with the verified MARK & QR URL
+      await this.onOpenPreview();
+
+      // 2. Clear customer & line items for the next document
+      this.linesArray.clear();
+      this.seedInitialLine();
+      this.invoiceForm.get('customer')?.reset();
+
+      // 3. Prepare counter & new draft ID for the NEXT invoice
       const tenantId = this.auth.currentTenantId();
-        if (tenantId) {
-          const nextAa = await this.db.getNextDocumentNumber(tenantId, invoice.series);
-          // Set up a fresh draft ID and update documentNumber
-          this.currentDraftId.set(crypto.randomUUID());
-          this.invoiceForm.get('documentNumber')?.setValue(nextAa, { emitEvent: false });
-        }
-    } catch (err: unknown) {
-      console.error('Network or gateway failure during myDATA transmission:', err);
-      this.autoSaveStatus.set('Σφάλμα δικτύου κατά την αποστολή');
+      if (tenantId) {
+        const nextAa = await this.db.getNextDocumentNumber(tenantId, invoice.series);
+        this.currentDraftId.set(crypto.randomUUID());
+        this.invoiceForm.get('documentNumber')?.setValue(nextAa, { emitEvent: false });
+      }
+    } else {
+      console.warn('myDATA Transmission rejected:', result.error);
+      const invoiceId = invoice.id != null ? String(invoice.id) : null;
+      if (invoiceId) {
+        await this.db.invoices.update(invoiceId, {
+          transmissionStatus: 'FAILED',
+          updatedAt: Date.now(),
+        });
+      }
+      this.autoSaveStatus.set(`Αποτυχία myDATA: ${result.error || 'Σφάλμα myDATA'}`);
     }
+  } catch (err: unknown) {
+    console.error('Network or gateway failure during myDATA transmission:', err);
+    this.autoSaveStatus.set('Σφάλμα δικτύου κατά την αποστολή');
   }
+}
 
   private syncLines(): void {
     const isDeltio = this.invoiceForm.get('invoiceType')?.value === '9.1';
