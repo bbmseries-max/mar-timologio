@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, input, output, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { QrCodeComponent } from '../../../shared/components/qr-code/qr-code.component';
 import {
@@ -99,7 +99,7 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
               <button
                 type="button"
                 (click)="triggerPrint()"
-                class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold shadow-sm transition flex items-center gap-2 text-white"
+                class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold shadow-sm transition flex items-center gap-2 text-white cursor-pointer"
               >
                 <span>Εκτύπωση ({{ activeMode() === 'thermal80' ? '80mm' : 'A4' }})</span>
               </button>
@@ -107,7 +107,7 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
               <button
                 type="button"
                 (click)="copyXml()"
-                class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-xs font-semibold transition text-slate-200"
+                class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-xs font-semibold transition text-slate-200 cursor-pointer"
               >
                 {{ copied() ? 'Αντιγράφηκε!' : 'Αντιγραφή XML' }}
               </button>
@@ -116,7 +116,7 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
             <button
               type="button"
               (click)="close.emit()"
-              class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition"
+              class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition cursor-pointer"
             >
               Κλείσιμο
             </button>
@@ -135,36 +135,37 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
               <div class="space-y-5">
                 <!-- Header -->
                 <div class="flex justify-between items-start border-b-2 border-slate-900 pb-5">
-                  <!-- DYNAMIC TENANT ISSUER -->
-<div class="flex items-center gap-2 mb-1">
-  <span class="w-6 h-6 rounded bg-indigo-600 text-white font-bold flex items-center justify-center text-xs">
-    {{ (invoice().issuer.tradeName || invoice().issuer.legalName).charAt(0) }}
-  </span>
-  <h1 class="text-lg font-black tracking-tight uppercase">
-    {{ invoice().issuer.tradeName || invoice().issuer.legalName }}
-  </h1>
-</div>
-@if (invoice().issuer.tradeName && invoice().issuer.legalName !== invoice().issuer.tradeName) {
-  <p class="font-medium text-slate-700">{{ invoice().issuer.legalName }}</p>
-}
-<p class="text-[11px] text-slate-600 mt-1">
-  Α.Φ.Μ.: <span class="font-bold font-mono">{{ invoice().issuer.afm }}</span>
-  @if (invoice().issuer.doy) {
-    | Δ.Ο.Υ.: {{ invoice().issuer.doy }}
-  }
-</p>
-@if (invoice().issuer.address?.street) {
-  <p class="text-[11px] text-slate-600">
-    {{ invoice().issuer.address?.street }} {{ invoice().issuer.address?.number }}, 
-    {{ invoice().issuer.address?.postalCode }} {{ invoice().issuer.address?.city }}
-  </p>
-}
-@if (invoice().issuer.phone || invoice().issuer.email) {
-  <p class="text-[11px] text-slate-600">
-    {{ invoice().issuer.phone ? 'Τηλ: ' + invoice().issuer.phone : '' }} 
-    {{ invoice().issuer.email ? '| ' + invoice().issuer.email : '' }}
-  </p>
-}
+                  <div>
+                    <div class="flex items-center gap-2 mb-1">
+                      <span class="w-6 h-6 rounded bg-indigo-600 text-white font-bold flex items-center justify-center text-xs">
+                        {{ (invoice().issuer.tradeName || invoice().issuer.legalName).charAt(0) }}
+                      </span>
+                      <h1 class="text-lg font-black tracking-tight uppercase">
+                        {{ invoice().issuer.tradeName || invoice().issuer.legalName }}
+                      </h1>
+                    </div>
+                    @if (invoice().issuer.tradeName && invoice().issuer.legalName !== invoice().issuer.tradeName) {
+                      <p class="font-medium text-slate-700">{{ invoice().issuer.legalName }}</p>
+                    }
+                    <p class="text-[11px] text-slate-600 mt-1">
+                      Α.Φ.Μ.: <span class="font-bold font-mono">{{ invoice().issuer.afm }}</span>
+                      @if (invoice().issuer.doy) {
+                        | Δ.Ο.Υ.: {{ invoice().issuer.doy }}
+                      }
+                    </p>
+                    @if (invoice().issuer.address?.street) {
+                      <p class="text-[11px] text-slate-600">
+                        {{ invoice().issuer.address?.street }} {{ invoice().issuer.address?.number }}, 
+                        {{ invoice().issuer.address?.postalCode }} {{ invoice().issuer.address?.city }}
+                      </p>
+                    }
+                    @if (invoice().issuer.phone || invoice().issuer.email) {
+                      <p class="text-[11px] text-slate-600">
+                        {{ invoice().issuer.phone ? 'Τηλ: ' + invoice().issuer.phone : '' }} 
+                        {{ invoice().issuer.email ? '| ' + invoice().issuer.email : '' }}
+                      </p>
+                    }
+                  </div>
 
                   <div class="text-right flex flex-col items-end">
                     <div class="border-2 border-slate-900 bg-slate-50 px-4 py-2 rounded-md text-center inline-block">
@@ -202,7 +203,7 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
                 @if (invoice().movement) {
                   <div class="border border-amber-300 bg-amber-50/60 rounded-lg p-3 text-[10px] space-y-1">
                     <div class="flex justify-between items-center border-b border-amber-200 pb-1">
-                      <span class="font-bold uppercase tracking-wider text-amber-900">Στοιχεια Ψηφιακης Διακινησης (ΑΑΔΕ Phase B)</span>
+                      <span class="font-bold uppercase tracking-wider text-amber-900">Στοιχεια Διακινησης (ΑΑΔΕ)</span>
                       <span class="font-mono font-bold text-amber-950">
                         Αρ. Οχήματος: {{ invoice().movement!.vehicleNumber }}
                       </span>
@@ -235,30 +236,30 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
                       <th class="py-2 w-8">#</th>
                       <th class="py-2">Περιγραφη Ειδους</th>
                       <th class="py-2 text-right w-20">Ποσοτητα</th>
-                      @if (invoice().invoiceType !== '9.1') {
+                      @if (!isDispatch()) {
                         <th class="py-2 text-right w-20">Τιμη Μον.</th>
                         <th class="py-2 text-right w-16">Εκπτ. %</th>
                         <th class="py-2 text-right w-20">Καθαρη</th>
                       }
                       <th class="py-2 text-right w-16">ΦΠΑ</th>
-                      @if (invoice().invoiceType !== '9.1') {
+                      @if (!isDispatch()) {
                         <th class="py-2 text-right w-24">Συνολο</th>
                       }
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-200">
-                    @for (line of invoice().lines; track line.id) {
+                    @for (line of invoice().lines; track line.id || $index) {
                       <tr>
-                        <td class="py-2 font-mono text-slate-500">{{ line.lineNumber }}</td>
+                        <td class="py-2 font-mono text-slate-500">{{ line.lineNumber || $index + 1 }}</td>
                         <td class="py-2 font-medium text-slate-900">{{ line.description }}</td>
                         <td class="py-2 text-right font-mono font-bold">{{ line.quantity }} Τεμ.</td>
-                        @if (invoice().invoiceType !== '9.1') {
+                        @if (!isDispatch()) {
                           <td class="py-2 text-right font-mono">{{ line.unitPrice | number:'1.2-2' }} €</td>
-                          <td class="py-2 text-right font-mono">{{ line.discountPercentage }}%</td>
+                          <td class="py-2 text-right font-mono">{{ line.discountPercentage || 0 }}%</td>
                           <td class="py-2 text-right font-mono">{{ line.netValue | number:'1.2-2' }} €</td>
                         }
-                        <td class="py-2 text-right font-mono">{{ line.vatPercentage }}%</td>
-                        @if (invoice().invoiceType !== '9.1') {
+                        <td class="py-2 text-right font-mono">{{ isDispatch() ? 'Άνευ ΦΠΑ' : (line.vatPercentage + '%') }}</td>
+                        @if (!isDispatch()) {
                           <td class="py-2 text-right font-mono font-bold text-slate-900">{{ line.totalValue | number:'1.2-2' }} €</td>
                         }
                       </tr>
@@ -276,15 +277,15 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
                       <p class="font-extrabold uppercase tracking-wider text-slate-900">Ψηφιακη Σημανση myDATA</p>
                       <p><span class="text-slate-500">MARK:</span> <span class="font-bold font-mono text-slate-900">{{ invoice().mark }}</span></p>
                       <p class="max-w-[260px] truncate"><span class="text-slate-500">UID:</span> <span class="font-mono text-[9px] text-slate-700">{{ invoice().uid }}</span></p>
-                      @if (invoice().invoiceType === '9.1') {
-                        <p class="text-[9px] font-bold text-amber-800">Μηδενική Χρηματική Αξία (Σκοπός: 6 - Επιστροφή)</p>
+                      @if (isDispatch()) {
+                        <p class="text-[9px] font-bold text-amber-800">Μηδενική Χρηματική Αξία (Σκοπός: {{ getPurposeLabel(invoice().movement?.movePurpose) }})</p>
                       } @else {
                         <p class="text-[9px] text-slate-500 italic">Επαλήθευση εγκυρότητας μέσω σάρωσης του QR Code</p>
                       }
                     </div>
                   </div>
 
-                  @if (invoice().invoiceType === '9.1') {
+                  @if (isDispatch()) {
                     <div class="w-80 space-y-3 text-xs border border-slate-300 bg-slate-50 p-3 rounded-lg">
                       <div class="flex justify-between font-bold text-slate-800 pb-1 border-b border-slate-200">
                         <span>ΣΥΝΟΛΟ ΕΙΔΩΝ:</span>
@@ -335,22 +336,21 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
               
               <!-- Company Header -->
               <div class="text-center pb-2 border-b border-dashed border-black">
-                <!-- DYNAMIC TENANT ISSUER -->
-<p class="font-black text-sm tracking-wider uppercase">
-  {{ invoice().issuer.tradeName || invoice().issuer.legalName }}
-</p>
-<p class="text-[10px]">
-  ΑΦΜ: {{ invoice().issuer.afm }}
-  {{ invoice().issuer.doy ? '- ΔΟΥ: ' + invoice().issuer.doy : '' }}
-</p>
-@if (invoice().issuer.address?.street) {
-  <p class="text-[9px]">
-    {{ invoice().issuer.address?.street }} {{ invoice().issuer.address?.number }}, {{ invoice().issuer.address?.city }}
-  </p>
-}
-@if (invoice().issuer.phone) {
-  <p class="text-[9px]">ΤΗΛ: {{ invoice().issuer.phone }}</p>
-}
+                <p class="font-black text-sm tracking-wider uppercase">
+                  {{ invoice().issuer.tradeName || invoice().issuer.legalName }}
+                </p>
+                <p class="text-[10px]">
+                  ΑΦΜ: {{ invoice().issuer.afm }}
+                  {{ invoice().issuer.doy ? '- ΔΟΥ: ' + invoice().issuer.doy : '' }}
+                </p>
+                @if (invoice().issuer.address?.street) {
+                  <p class="text-[9px]">
+                    {{ invoice().issuer.address?.street }} {{ invoice().issuer.address?.number }}, {{ invoice().issuer.address?.city }}
+                  </p>
+                }
+                @if (invoice().issuer.phone) {
+                  <p class="text-[9px]">ΤΗΛ: {{ invoice().issuer.phone }}</p>
+                }
               </div>
 
               <!-- Document Metadata -->
@@ -375,7 +375,7 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
                 <p class="truncate">{{ invoice().customer.address?.street }} {{ invoice().customer.address?.number }}, {{ invoice().customer.address?.city }}</p>
               </div>
 
-              <!-- Goods Movement (If 1.2 or 9.1 Ex-Van) -->
+              <!-- Goods Movement (If dispatch or ex-van) -->
               @if (invoice().movement) {
                 <div class="py-2 border-b border-dashed border-black text-[9px] space-y-0.5 bg-slate-50/50">
                   <p class="font-bold uppercase text-[10px] text-center">** ΔΙΑΚΙΝΗΣΗ ΑΓΑΘΩΝ (AADE) **</p>
@@ -394,18 +394,18 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
 
               <!-- Items Table -->
               <div class="py-2 border-b border-dashed border-black">
-                @if (invoice().invoiceType === '9.1') {
+                @if (isDispatch()) {
                   <div class="flex justify-between font-bold text-[9px] pb-1 border-b border-black">
                     <span class="w-[70%]">ΕΙΔΟΣ/ΠΕΡΙΓΡΑΦΗ</span>
                     <span class="w-[30%] text-right">ΠΟΣΟΤΗΤΑ</span>
                   </div>
 
                   <div class="divide-y divide-dotted divide-slate-400 py-1">
-                    @for (line of invoice().lines; track line.id) {
+                    @for (line of invoice().lines; track line.id || $index) {
                       <div class="py-1 text-[10px]">
                         <div class="font-bold truncate">{{ line.description }}</div>
                         <div class="flex justify-between text-[9px]">
-                          <span>ΦΠΑ: {{ line.vatPercentage }}%</span>
+                          <span>Άνευ ΦΠΑ</span>
                           <span class="font-bold font-mono">{{ line.quantity }} Τεμ.</span>
                         </div>
                       </div>
@@ -419,7 +419,7 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
                   </div>
 
                   <div class="divide-y divide-dotted divide-slate-400 py-1">
-                    @for (line of invoice().lines; track line.id) {
+                    @for (line of invoice().lines; track line.id || $index) {
                       <div class="py-1 text-[10px]">
                         <div class="font-bold truncate">{{ line.description }}</div>
                         <div class="flex justify-between text-[9px]">
@@ -433,7 +433,7 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
               </div>
 
               <!-- Totals / Signatures -->
-              @if (invoice().invoiceType === '9.1') {
+              @if (isDispatch()) {
                 <div class="py-2 border-b border-dashed border-black text-center text-[10px] font-bold space-y-1">
                   <p>ΜΗΔΕΝΙΚΗ ΧΡΗΜΑΤΙΚΗ ΑΞΙΑ</p>
                   <p class="text-[9px] font-normal">ΣΥΝΟΛΙΚΑ ΕΙΔΗ: {{ invoice().lines.length }} γραμμές</p>
@@ -499,69 +499,41 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
   `,
   styles: [`
     @media print {
-      /* 1. Force the host component to take over the viewport */
-      :host {
-        display: block !important;
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100vw !important;
-        height: auto !important;
-        min-height: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        background: #ffffff !important;
-        z-index: 9999999 !important;
-      }
-
-      /* 2. Strip all modal backdrops, scrollboxes, and flex restrictions */
-      .print-modal-backdrop,
-      .print-modal-window,
-      .print-body-area {
-        position: static !important;
-        display: block !important;
-        background: transparent !important;
-        box-shadow: none !important;
-        border: none !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        height: auto !important;
-        max-height: none !important;
-        overflow: visible !important;
-        padding: 0 !important;
-        margin: 0 !important;
-      }
-
-      .no-print {
+      /* 1. Hide everything on the original app page */
+      body > *:not(#aade-isolated-print-area) {
         display: none !important;
       }
 
-      /* 3. A4 Corporate Document */
-      .print-sheet {
-        position: relative !important;
+      /* 2. Style the isolated print container at root level */
+      #aade-isolated-print-area {
         display: block !important;
+        position: static !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+      }
+
+      #aade-isolated-print-area .print-sheet {
+        display: block !important;
+        width: 100% !important;
+        max-width: none !important;
         box-shadow: none !important;
         border: none !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        min-height: auto !important;
-        height: auto !important;
         padding: 0 !important;
         margin: 0 !important;
       }
 
-      /* 4. 80mm Continuous Thermal Receipt */
-      .thermal-receipt {
+      #aade-isolated-print-area .thermal-receipt {
         display: block !important;
-        box-shadow: none !important;
-        border: none !important;
         width: 74mm !important;
         max-width: 74mm !important;
         margin: 0 auto !important;
         padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
       }
 
-      /* 5. Prevent elements from breaking mid-content */
       table, tr, td, th, canvas, img {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
@@ -576,43 +548,55 @@ export class InvoicePrintComponent {
   public readonly activeMode = signal<PrintLayoutMode>('a4');
   public readonly copied = signal<boolean>(false);
 
-  public triggerPrint(): void {
-    const portal = document.getElementById('print-portal');
-    const sheetToPrint = document.querySelector(
-      this.activeMode() === 'thermal80' ? '.thermal-receipt' : '.print-sheet'
-    ) as HTMLElement;
+  public isDispatch = computed(() => {
+    const t = this.invoice().invoiceType;
+    return t === '9.1' || t === '9.3';
+  });
 
-    if (!portal || !sheetToPrint) {
+  public triggerPrint(): void {
+    const isThermal = this.activeMode() === 'thermal80';
+    const selector = isThermal ? '.thermal-receipt' : '.print-sheet';
+    const sourceEl = document.querySelector(selector) as HTMLElement;
+
+    if (!sourceEl) {
       window.print();
       return;
     }
 
-    // 1. Deep clone the DOM tree
-    portal.innerHTML = '';
-    const cloned = sheetToPrint.cloneNode(true) as HTMLElement;
+    // 1. Remove any previous print container
+    const existing = document.getElementById('aade-isolated-print-area');
+    if (existing) existing.remove();
 
-    // 2. Transfer live Canvas pixel buffer (QR code) to cloned Canvas
-    const sourceCanvases = sheetToPrint.querySelectorAll('canvas');
-    const clonedCanvases = cloned.querySelectorAll('canvas');
+    // 2. Create an isolated container directly attached to <body>
+    const printContainer = document.createElement('div');
+    printContainer.id = 'aade-isolated-print-area';
 
-    sourceCanvases.forEach((srcCanvas, i) => {
-      const destCanvas = clonedCanvases[i];
-      if (destCanvas) {
-        destCanvas.width = srcCanvas.width;
-        destCanvas.height = srcCanvas.height;
-        const ctx = destCanvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(srcCanvas, 0, 0);
-        }
+    // 3. Clone the printable content
+    const clone = sourceEl.cloneNode(true) as HTMLElement;
+
+    // 4. Copy live Canvas pixel buffers (for the QR Code)
+    const srcCanvases = sourceEl.querySelectorAll('canvas');
+    const destCanvases = clone.querySelectorAll('canvas');
+    srcCanvases.forEach((src, idx) => {
+      const dest = destCanvases[idx];
+      if (dest) {
+        dest.width = src.width;
+        dest.height = src.height;
+        const ctx = dest.getContext('2d');
+        if (ctx) ctx.drawImage(src, 0, 0);
       }
     });
 
-    // 3. Mount to portal and trigger print
-    portal.appendChild(cloned);
-    window.print();
+    printContainer.appendChild(clone);
+    document.body.appendChild(printContainer);
 
-    // 4. Clean up portal
-    portal.innerHTML = '';
+    // 5. Open print dialog, then remove container
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        printContainer.remove();
+      }, 500);
+    }, 100);
   }
 
   public copyXml(): void {
@@ -627,22 +611,23 @@ export class InvoicePrintComponent {
   public getDocTitle(type: string): string {
     switch (type) {
       case '1.1': return '1.1 Τιμολόγιο Πώλησης';
-      case '1.2': return '1.2 Τιμολόγιο / Δελτίο Αποστολής';
-      case '2.1': return '2.1 Τιμολόγιο Υπηρεσιών';
+      case '2.1': return '2.1 Τιμολόγιο Παροχής Υπηρεσιών';
       case '5.1': return '5.1 Πιστωτικό Τιμολόγιο';
-      case '9.1': return '9.1 Δελτίο Αποστολής';
-      default: return 'Προτιμολόγιο / Προσφορά';
+      case '9.1': return '9.1 Δελτίο Αποστολής (Συσχετιζόμενο)';
+      case '9.3': return '9.3 Δελτίο Αποστολής (Αυτόνομο)';
+      default: return 'Παραστατικό';
     }
   }
 
   public getPurposeLabel(purposeCode?: number): string {
-    switch (purposeCode) {
+    switch (Number(purposeCode)) {
       case 1: return 'Πώληση';
-      case 2: return 'Διακίνηση Εγκαταστάσεων';
-      case 3: return 'Αποθήκευση';
-      case 4: return 'Επεξεργασία';
-      case 5: return 'Δειγματισμός';
+      case 2: return 'Διακίνηση';
+      case 3: return 'Δειγματισμός';
+      case 4: return 'Έκθεση';
+      case 5: return 'Επεξεργασία';
       case 6: return 'Επιστροφή';
+      case 7: return 'Λοιπά';
       default: return 'Πώληση';
     }
   }

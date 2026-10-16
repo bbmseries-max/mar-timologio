@@ -1,19 +1,18 @@
 import { AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
 import { isValidGreekAfm } from '../utils/fiscal-engine';
 
-/**
- * Angular Reactive Form ValidatorFn for Greek Tax Identification Numbers (Α.Φ.Μ.)
- * Delegates to the Modulo-11 calculation in the fiscal engine.
- */
 export function greekAfmValidator(): ValidatorFn {
   return (control: AbstractControl): ValidationErrors | null => {
-    const val = control.value;
-    if (!val) {
-      return null; // Let Validators.required handle empty values
+    const raw = control.value;
+    if (!raw) {
+      return null;
     }
-    return isValidGreekAfm(val) ? null : { invalidGreekAfm: true };
+    // Clean spaces and check
+    const clean = String(raw).trim().replace(/\D/g, '');
+    if (clean.length === 0) return null;
+
+    return isValidGreekAfm(clean) ? null : { invalidGreekAfm: true };
   };
 }
 
-// Re-export so consumers can import both from this path if preferred
 export { isValidGreekAfm };

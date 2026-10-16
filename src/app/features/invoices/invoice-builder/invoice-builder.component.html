@@ -1,0 +1,458 @@
+<div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6 no-print">
+      
+      <!-- Top Action Bar -->
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-5 gap-4">
+        <div>
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Νέο Παραστατικό</h1>
+            <span class="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg font-mono font-medium bg-slate-100 text-slate-600 border border-slate-200">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              {{ autoSaveStatus() }}
+            </span>
+            @if (isMovementDocument) {
+              <span class="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg font-semibold bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                AADE Phase B: Ψηφιακή Διακίνηση
+              </span>
+            }
+          </div>
+          <p class="text-xs text-slate-500 mt-1">Maranth B2B Timologio &bull; AADE myDATA Gateway</p>
+        </div>
+
+        <!-- Action Buttons -->
+<div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+
+  <!-- 1. Reset / Clear -->
+  <button
+    type="button"
+    (click)="onResetForm()"
+    class="inline-flex items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs transition active:scale-98"
+  >
+    <span class="text-slate-400">↺</span>
+    <span>Καθαρισμός</span>
+  </button>
+
+  <!-- 2. Save Draft Locally -->
+  <button
+    type="button"
+    (click)="onSaveDraftManually()"
+    class="inline-flex items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-200 shadow-2xs transition active:scale-98"
+  >
+    <span class="text-slate-400">💾</span>
+    <span>Αποθήκευση Πρόχειρου</span>
+  </button>
+
+  <!-- 3. Safe Preview (Before Transmission) -->
+  <button
+    type="button"
+    (click)="onOpenPreview()"
+    [disabled]="invoiceForm.invalid"
+    class="inline-flex items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed transition active:scale-98"
+  >
+    <span class="text-slate-400">👁️</span>
+    <span>Προεπισκόπηση</span>
+  </button>
+
+  <!-- 4. Primary: Issue & Transmit to myDATA -->
+  <button
+    type="button"
+    (click)="onSaveAndSubmit()"
+    [disabled]="invoiceForm.invalid"
+    class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm shadow-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition active:scale-98"
+  >
+    <span>⚡</span>
+    <span>Έκδοση & myDATA</span>
+  </button>
+
+</div>
+      </div>
+
+      <form [formGroup]="invoiceForm" class="space-y-6">
+        <!-- Recipient & Document Info -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs md:col-span-2 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-700">Στοιχεία Πελάτη / Λήπτη</h2>
+              @if (customerAfmValue) {
+              @if (isAfmValid()) {
+             <span class="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+             ✓ Έγκυρο Α.Φ.Μ.
+             </span>
+             } @else if (isAfmInvalid) {
+             <span class="text-xs text-rose-500 font-medium mt-1 block">✕ Μη έγκυρο Α.Φ.Μ.</span>
+             }
+            }
+            </div>
+
+            <div formGroupName="customer" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="relative">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Α.Φ.Μ. *</label>
+                <div class="flex rounded-md shadow-2xs">
+                  <input
+                    type="text"
+                    formControlName="afm"
+                    maxlength="9"
+                    (input)="onCustomerSearch($any($event.target).value)"
+                    placeholder="9 ψηφία"
+                    class="block w-full rounded-l-md border-slate-300 text-sm px-3 py-2 border font-mono focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                  
+                  <button
+                    type="button"
+                    (click)="triggerGsisLookup()"
+                    [disabled]="gsisLoading()"
+                    class="inline-flex items-center px-3 rounded-r-md border border-l-0 border-slate-300 bg-slate-50 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition"
+                  >
+                    @if (gsisLoading()) {
+                      <span class="inline-block animate-spin mr-1">⌛</span>
+                    }
+                    GSIS
+                  </button>
+                </div>
+
+                @if (customerResults().length > 0) {
+                  <div class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-40 max-h-52 overflow-y-auto divide-y divide-slate-100">
+                    @for (cust of customerResults(); track cust.id) {
+                      <button
+                        type="button"
+                        (click)="selectCustomer(cust)"
+                        class="w-full px-3.5 py-2 text-left hover:bg-indigo-50/70 transition flex items-center justify-between text-xs"
+                      >
+                        <div>
+                          <p class="font-bold text-slate-900">{{ cust.legalName }}</p>
+                          <p class="text-[10px] text-slate-500 font-mono">ΑΦΜ: {{ cust.afm }} | ΔΟΥ: {{ cust.doy || '—' }}</p>
+                        </div>
+                        <span class="text-[10px] text-indigo-600 font-semibold">Επιλογή</span>
+                      </button>
+                    }
+                  </div>
+                }
+
+                @if (afmInvalid) {
+                  <span class="text-xs text-rose-600 mt-1 block">Μη έγκυρο Α.Φ.Μ. (Modulo 11)</span>
+                }
+                @if (gsisError()) {
+                  <span class="text-xs text-amber-600 mt-1 block">{{ gsisError() }}</span>
+                }
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Επωνυμία *</label>
+                <input
+                  type="text"
+                  formControlName="legalName"
+                  class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Δ.Ο.Υ.</label>
+                <input
+                  type="text"
+                  formControlName="doy"
+                  class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border"
+                />
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Email</label>
+                <input
+                  type="email"
+                  formControlName="email"
+                  class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Document Series & Type -->
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-4">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-700">Στοιχεία Σειράς</h2>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Τύπος Παραστατικού</label>
+                <select formControlName="invoiceType" class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border font-medium">
+                  <option value="1.1">1.1 Τιμολόγιο Πώλησης</option>
+                  <option value="2.1">2.1 Τιμολόγιο Παροχής Υπηρεσιών</option>
+                 <!--> <option value="1.2">1.2 Τιμολόγιο Πώλησης / Δελτίο Αποστολής (Ex-Van)</option>
+                  
+                  <option value="9.1">9.1 Δελτίο Αποστολής (Διακίνηση Αγαθών)</option>
+                  <option value="9.3">9.3 - Δελτίο Αποστολής (Αυτόνομο / Μη Συσχετιζόμενο)</option>
+                  <option value="5.1">5.1 Πιστωτικό Τιμολόγιο</option>
+                  <option value="PROFORMA">Προσφορά / Προτιμολόγιο</option>-->
+                </select>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Σειρά</label>
+                  <input
+                    type="text"
+                    formControlName="series"
+                    placeholder="π.χ. ΤΠΥ"
+                    class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border uppercase font-mono font-bold focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="block text-xs font-medium text-slate-600">Αριθμός (Α/Α)</label>
+                    <span class="text-[10px] text-indigo-600 font-semibold font-mono">Auto</span>
+                  </div>
+                  <input
+  type="number"
+  formControlName="documentNumber"
+  [readOnly]="true"
+  tabindex="-1"
+  (keydown)="$event.preventDefault()"
+  (wheel)="$event.preventDefault()"
+  class="w-full rounded-md border-slate-200 text-sm px-3 py-2 border font-mono font-bold bg-slate-100 text-slate-700 cursor-not-allowed select-none focus:outline-hidden focus:ring-0"
+/>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Ημερομηνία</label>
+                <input type="date" formControlName="issueDate" class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- GOODS MOVEMENT PANEL (Rendered for 1.2 and 9.1) -->
+        @if (isMovementDocument) {
+          <div formGroupName="movement" class="bg-amber-50/70 border border-amber-300 rounded-xl p-5 shadow-2xs space-y-4">
+            <div class="flex items-center justify-between border-b border-amber-200 pb-3">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                <h3 class="text-sm font-bold uppercase tracking-wider text-amber-900">
+                  Στοιχεία Διακίνησης Αγαθών (AADE Ψηφιακό Δελτίο Αποστολής)
+                </h3>
+              </div>
+              <span class="text-[11px] font-mono font-medium text-amber-800">Υποχρεωτικό για διαδρομές van & φορτηγών</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Αρ. Κυκλοφορίας Οχήματος</label>
+                <input
+                  type="text"
+                  formControlName="vehicleNumber"
+                  placeholder="π.χ. IEB-4892"
+                  class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border uppercase font-mono font-bold bg-white"
+                />
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Σκοπός Διακίνησης</label>
+                <select formControlName="movePurpose" class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border bg-white">
+                  <option [value]="1">1 - Πώληση</option>
+                  <option [value]="2">2 - Διακίνηση μεταξύ εγκαταστάσεων</option>
+                  <option [value]="3">3 - Αποθήκευση σε τρίτους</option>
+                  <option [value]="4">4 - Επεξεργασία / Συναρμολόγηση</option>
+                  <option [value]="5">5 - Δειγματισμός / Έκθεση</option>
+                  <option [value]="6">6 - Επιστροφή</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Ημ/νία & Ώρα Έναρξης Διακίνησης</label>
+                <input
+                  type="datetime-local"
+                  formControlName="dispatchDateTime"
+                  class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border bg-white font-mono"
+                />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div formGroupName="addressFrom" class="p-3 bg-white/80 rounded-lg border border-amber-200">
+                <span class="block text-[10px] font-bold uppercase text-slate-500 mb-2">Τόπος Έναρξης (Φόρτωση / Έδρα)</span>
+                <div class="grid grid-cols-3 gap-2">
+                  <input type="text" formControlName="street" placeholder="Οδός" class="col-span-2 text-xs border rounded p-1.5" />
+                  <input type="text" formControlName="number" placeholder="Αριθμός" class="text-xs border rounded p-1.5" />
+                  <input type="text" formControlName="postalCode" placeholder="Τ.Κ." class="text-xs border rounded p-1.5" />
+                  <input type="text" formControlName="city" placeholder="Πόλη" class="col-span-2 text-xs border rounded p-1.5" />
+                </div>
+              </div>
+
+              <div formGroupName="addressTo" class="p-3 bg-white/80 rounded-lg border border-amber-200">
+                <span class="block text-[10px] font-bold uppercase text-slate-500 mb-2">Τόπος Προορισμού (Παράδοση)</span>
+                <div class="grid grid-cols-3 gap-2">
+                  <input type="text" formControlName="street" placeholder="Οδός" class="col-span-2 text-xs border rounded p-1.5" />
+                  <input type="text" formControlName="number" placeholder="Αριθμός" class="text-xs border rounded p-1.5" />
+                  <input type="text" formControlName="postalCode" placeholder="Τ.Κ." class="text-xs border rounded p-1.5" />
+                  <input type="text" formControlName="city" placeholder="Πόλη" class="col-span-2 text-xs border rounded p-1.5" />
+                </div>
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- Product Search Toolbar -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+              <span>🔍</span>
+              <span>Αναζήτηση Προϊόντος / Σάρωση Barcode</span>
+            </label>
+
+            <button
+              type="button"
+              (click)="showImportModal.set(true)"
+              class="px-2.5 py-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100/70 border border-blue-200 rounded-lg transition flex items-center gap-1.5"
+            >
+              <span>📁</span>
+              <span>Εισαγωγή Excel / CSV</span>
+            </button>
+          </div>
+
+          <div class="relative">
+            <input
+              type="text"
+              [value]="searchQuery()"
+              (input)="onSearchChange($any($event.target).value)"
+              (keydown.enter)="onBarcodeEnter(); $event.preventDefault()"
+              placeholder="Πληκτρολογήστε όνομα ή σκανάρετε barcode και πατήστε Enter..."
+              class="w-full text-xs rounded-xl border-slate-200 px-3.5 py-2.5 border bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-medium"
+            />
+
+            @if (searchResults().length > 0) {
+              <div class="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-slate-100">
+                @for (item of searchResults(); track item.id) {
+                  <button
+                    type="button"
+                    (click)="addProductToInvoice(item)"
+                    class="w-full px-4 py-2.5 text-left text-xs hover:bg-blue-50/60 transition flex items-center justify-between group"
+                  >
+                    <div>
+                      <p class="font-bold text-slate-800 group-hover:text-blue-700">{{ item.name }}</p>
+                      @if (item.barcode) {
+                        <p class="text-[10px] text-slate-400 font-mono">Barcode: {{ item.barcode }}</p>
+                      }
+                    </div>
+                    <div class="text-right">
+                      <span class="font-mono font-bold text-slate-900 block">{{ item.price | number:'1.2-2' }} €</span>
+                      <span class="text-[10px] text-slate-500">ΦΠΑ {{ item.taxRate || 24 }}%</span>
+                    </div>
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- Line Items -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div class="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-700">Γραμμές Ειδών / Υπηρεσιών</h2>
+            <button
+              type="button"
+              (click)="addLineItem()"
+              class="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-md text-xs font-semibold transition"
+            >
+              + Προσθήκη Γραμμής
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-200 text-left text-sm">
+              <thead class="bg-slate-50 text-xs font-medium text-slate-500 uppercase">
+                <tr>
+                  <th class="px-4 py-3">Περιγραφή</th>
+                  <th class="px-3 py-3 w-24">Ποσότητα</th>
+                  @if (!isPureDispatch) {
+                    <th class="px-3 py-3 w-28">Τιμή (€)</th>
+                    <th class="px-3 py-3 w-20">Έκπτ. %</th>
+                    <th class="px-3 py-3 w-28">Καθαρή</th>
+                  }
+                  <th class="px-3 py-3 w-32">ΦΠΑ</th>
+                  @if (!isPureDispatch) {
+                    <th class="px-3 py-3 w-28">Σύνολο</th>
+                  }
+                  <th class="px-2 py-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody formArrayName="lines" class="divide-y divide-slate-100">
+                @for (line of linesArray.controls; track $index) {
+                  <tr [formGroupName]="$index" class="hover:bg-slate-50/50">
+                    <td class="p-3">
+                      <input type="text" formControlName="description" placeholder="Περιγραφή είδους" class="w-full text-sm border-slate-200 rounded px-2 py-1.5 border font-medium text-slate-800" />
+                    </td>
+                    <td class="p-3">
+                      <input type="number" formControlName="quantity" (input)="recalculateLine($index)" class="w-full text-sm border-slate-200 rounded px-2 py-1.5 border font-bold text-slate-900" />
+                    </td>
+                    @if (!isPureDispatch) {
+                      <td class="p-3">
+                        <input type="number" step="0.01" formControlName="unitPrice" (input)="recalculateLine($index)" class="w-full text-sm border-slate-200 rounded px-2 py-1 border" />
+                      </td>
+                      <td class="p-3">
+                        <input type="number" formControlName="discountPercentage" (input)="recalculateLine($index)" class="w-full text-sm border-slate-200 rounded px-2 py-1 border" />
+                      </td>
+                      <td class="p-3 font-mono text-slate-700">
+                        {{ line.get('netValue')?.value | number: '1.2-2' }}
+                      </td>
+                    }
+                    <td class="p-3">
+                      <select formControlName="vatRateCategory" (change)="recalculateLine($index)" class="w-full text-xs border-slate-200 rounded px-2 py-1.5 border bg-white font-medium">
+                        <option [value]="1">24% (Κανονικό)</option>
+                        <option [value]="2">13% (Μειωμένο - Τρόφιμα)</option>
+                        <option [value]="3">6% (Υπερμειωμένο)</option>
+                        <option [value]="7">0% (Απαλλαγή)</option>
+                      </select>
+                    </td>
+                    @if (!isPureDispatch) {
+                      <td class="p-3 font-mono font-bold text-slate-900">
+                        {{ line.get('totalValue')?.value | number: '1.2-2' }}
+                      </td>
+                    }
+                    <td class="p-3 text-center">
+                      <button type="button" (click)="removeLineItem($index)" class="text-rose-400 hover:text-rose-600 font-bold text-lg">×</button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="flex justify-end">
+          <div class="w-full md:w-80 bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+            @if (isPureDispatch) {
+              <div class="p-3 bg-amber-50 rounded-lg border border-amber-200 text-center">
+                <span class="block text-xs font-bold text-amber-900 uppercase tracking-wide">Δελτίο Διακίνησης</span>
+                <span class="text-[11px] text-amber-700">Μη τιμολογιακό παραστατικό μεταφοράς. Καθαρή αξία: 0.00 €</span>
+              </div>
+            } @else {
+              <div class="flex justify-between text-sm text-slate-600">
+                <span>Καθαρή Αξία:</span>
+                <span class="font-mono font-medium">{{ computedTotals().totalNetValue | currency: 'EUR' }}</span>
+              </div>
+              <div class="flex justify-between text-sm text-slate-600">
+                <span>Φ.Π.Α.:</span>
+                <span class="font-mono font-medium">{{ computedTotals().totalVatAmount | currency: 'EUR' }}</span>
+              </div>
+              <div class="border-t border-slate-200 pt-3 flex justify-between text-base font-bold text-slate-900">
+                <span>Σύνολο:</span>
+                <span class="font-mono text-indigo-600">{{ computedTotals().totalGrossValue | currency: 'EUR' }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      </form>
+
+      <!-- PRINT PREVIEW MODAL -->
+      @if (showPrintModal() && printableData()) {
+        <maranth-invoice-print
+          [invoice]="printableData()!"
+          (close)="showPrintModal.set(false)"
+        ></maranth-invoice-print>
+      }
+
+      <!-- EXCEL / CSV IMPORT MODAL -->
+      @if (showImportModal()) {
+        <maranth-product-import-modal
+          (close)="showImportModal.set(false)"
+          (imported)="autoSaveStatus.set('Εισήχθησαν ' + $event + ' προϊόντα!')"
+        ></maranth-product-import-modal>
+      }
+    </div>

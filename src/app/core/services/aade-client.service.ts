@@ -1,6 +1,6 @@
 // src/app/core/services/aade-client.service.ts
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { LocalDbService } from './local-db.service';
 import { AuthTenantService } from './auth-tenant.service';
@@ -10,6 +10,7 @@ export interface SendInvoicesResult {
   mark?: string;
   uid?: string;
   qrUrl?: string;
+  statusCode?: string;
   rawXmlResponse?: string;
   errorMessage?: string;
 }
@@ -20,91 +21,90 @@ export class AadeClientService {
   private readonly db = inject(LocalDbService);
   private readonly auth = inject(AuthTenantService);
 
-  private readonly SANDBOX_URL = 'https://mydataapidev.aade.gr/SendInvoices';
-  private readonly PROD_URL = 'https://mydatapi.aade.gr/myDATA/SendInvoices';
+  // Cloudflare Worker handles CORS, upstream AADE endpoints & credential signing
+  private readonly WORKER_URL = 'https://gsis-lookup.bbmseries.workers.dev/send-invoice';
+  // Add ?mock=true or ?env=sandbox to prevent production liabilities during testing
+  //private readonly WORKER_URL = 'https://gsis-lookup.bbmseries.workers.dev/send-invoice?mock=true';
 
   /**
-   * Dispatches the 9.1 Return XML to AADE and extracts the MARK.
+   * Dispatches the invoice XML payload via the secure Cloudflare Worker proxy.
    */
   public async sendInvoiceXml(xmlPayload: string): Promise<SendInvoicesResult> {
-    const tenantId = this.auth.currentTenantId();
-    const settings = await this.db.getSettingsForTenant(tenantId);
-
-    if (!settings || !settings.aadeUserId || !settings.aadeSubscriptionKey) {
-      return {
-        success: false,
-        errorMessage: 'Δεν βρέθηκαν διαπιστευτήρια AADE στις Ρυθμίσεις.',
-      };
-    }
-
-    const targetUrl = settings.isProduction ? this.PROD_URL : this.SANDBOX_URL;
-
-    // AADE mandatory custom authentication headers
-    const headers = new HttpHeaders({
-      'Content-Type': 'application/xml; charset=utf-8',
-      'aade-user-id': settings.aadeUserId,
-      'Ocp-Apim-Subscription-Key': settings.aadeSubscriptionKey,
-    });
-
     try {
-      const responseXmlText = await firstValueFrom(
-        this.http.post(targetUrl, xmlPayload, {
-          headers,
-          responseType: 'text',
+      // The Cloudflare Worker accepts raw XML and returns structured JSON
+      const res = await firstValueFrom(
+        this.http.post<{
+          success: boolean;
+          statusCode?: string;
+          mark?: string;
+          uid?: string;
+          qrUrl?: string;
+          error?: string;
+          raw?: string;
+        }>(this.WORKER_URL, xmlPayload, {
+          headers: { 'Content-Type': 'application/xml; charset=utf-8' },
         })
       );
 
-      return this.parseAadeResponse(responseXmlText);
-    } catch (err: any) {
-      console.error('[AADE API Error]', err);
+      if (res.success && res.mark) {
+        return {
+          success: true,
+          mark: res.mark,
+          uid: res.uid,
+          qrUrl: res.qrUrl,
+          statusCode: res.statusCode,
+          rawXmlResponse: res.raw,
+        };
+      }
+
+      // If the worker returned an error response or raw XML with rejection codes
+      if (res.raw && !res.error) {
+        return this.parseAadeXmlErrors(res.raw);
+      }
+
       return {
         success: false,
-        errorMessage: err.error || err.message || 'Αποτυχία επικοινωνίας με το API της ΑΑΔΕ.',
+        errorMessage: res.error || 'Απόρριψη παραστατικού από την ΑΑΔΕ.',
+        rawXmlResponse: res.raw,
+      };
+    } catch (err: any) {
+      console.error('[AADE Gateway Error]', err);
+      return {
+        success: false,
+        errorMessage: err.error?.error || err.message || 'Αποτυχία επικοινωνίας με το Gateway της ΑΑΔΕ.',
       };
     }
   }
 
   /**
-   * Parses the XML response from AADE:
-   * <response>
-   *   <index>1</index>
-   *   <invoiceUid>...</invoiceUid>
-   *   <invoiceMark>...</invoiceMark>
-   *   <statusCode>Success</statusCode>
-   * </response>
+   * Parses error details if raw XML was returned from an AADE rejection.
    */
-  private parseAadeResponse(xmlStr: string): SendInvoicesResult {
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlStr, 'application/xml');
+  private parseAadeXmlErrors(xmlStr: string): SendInvoicesResult {
+    try {
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlStr, 'application/xml');
 
-    const statusCode = xmlDoc.querySelector('statusCode')?.textContent;
-    const mark = xmlDoc.querySelector('invoiceMark')?.textContent;
-    const uid = xmlDoc.querySelector('invoiceUid')?.textContent;
-    const qrUrl = xmlDoc.querySelector('qrUrl')?.textContent;
+      const errorMessages: string[] = [];
+      const errorNodes = xmlDoc.querySelectorAll('errors > error');
+      errorNodes.forEach((node) => {
+        const code = node.querySelector('code')?.textContent || '';
+        const message = node.querySelector('message')?.textContent || '';
+        if (code || message) {
+          errorMessages.push(`${code}: ${message}`.trim());
+        }
+      });
 
-    if (statusCode === 'Success' && mark) {
       return {
-        success: true,
-        mark,
-        uid: uid || undefined,
-        qrUrl: qrUrl || undefined,
+        success: false,
+        errorMessage: errorMessages.join(' | ') || 'Απόρριψη myDATA χωρίς σαφή περιγραφή.',
+        rawXmlResponse: xmlStr,
+      };
+    } catch (e) {
+      return {
+        success: false,
+        errorMessage: 'Αποτυχία ανάλυσης απάντησης ΑΑΔΕ.',
         rawXmlResponse: xmlStr,
       };
     }
-
-    // Extract errors if rejected
-    const errorMessages: string[] = [];
-    const errorNodes = xmlDoc.querySelectorAll('errors > error');
-    errorNodes.forEach((node) => {
-      const code = node.querySelector('code')?.textContent || '';
-      const message = node.querySelector('message')?.textContent || '';
-      errorNodes.length > 0 && errorMessages.push(`${code}: ${message}`);
-    });
-
-    return {
-      success: false,
-      errorMessage: errorMessages.join(' | ') || 'Απόρριψη από myDATA χωρίς σαφή περιγραφή.',
-      rawXmlResponse: xmlStr,
-    };
   }
 }

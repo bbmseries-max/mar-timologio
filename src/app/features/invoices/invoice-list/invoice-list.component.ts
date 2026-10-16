@@ -152,7 +152,7 @@ export class InvoiceListComponent implements OnInit {
           afm: inv.customerAfm || '',
         },
         customer: {
-          id: inv.id || crypto.randomUUID(),
+          id: String(inv.id ?? crypto.randomUUID()),
           afm: inv.customerAfm || '',
           branch: 0,
           legalName: inv.customerName || '',
@@ -195,12 +195,17 @@ export class InvoiceListComponent implements OnInit {
     this.selectedInvoiceForPrint.set(null);
   }
 
-  public async deleteItem(id: string): Promise<void> {
+  public async deleteItem(id: string | number | undefined): Promise<void> {
+    const invoiceId = String(id ?? '');
+    if (!invoiceId) {
+      return;
+    }
+
     const confirmed = confirm('Είστε βέβαιοι ότι θέλετε να διαγράψετε αυτό το παραστατικό;');
     if (confirmed) {
-      await this.db.deleteInvoice(id);
+      await this.db.deleteInvoice(invoiceId);
       // Reload list
-      this.invoices.update(list => list.filter(item => item.id !== id));
+      this.invoices.update(list => list.filter(item => String(item.id) !== invoiceId));
     }
   }
 }

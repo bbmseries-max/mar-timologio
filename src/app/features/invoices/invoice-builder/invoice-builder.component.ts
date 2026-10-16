@@ -4,8 +4,10 @@ import {
   signal,
   computed,
   inject,
+  effect,
   OnInit,
 } from '@angular/core';
+import { MyDataService } from '@core/services/mydata.service';
 import { ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormArray, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -15,6 +17,7 @@ import { LocalCustomerRecord, LocalDbService } from '@core/services/local-db.ser
 import { CartBridgeService } from '@core/services/cart-bridge.service';
 import { ProductImportModalComponent } from '../../catalog/product-import-modal.component';
 import { AuthTenantService } from '@core/services/auth-tenant.service';
+import { TenantIntegrationService } from '@core/services/tenant-integration.service';
 import { GsisLookupService } from '@core/services/gsis-lookup.service';
 import {
   VatRateCategory,
@@ -27,6 +30,7 @@ import { AadeSerializerService } from '@core/services/aade-serializer.service';
 import { LocalInvoiceRecord, Product } from '@core/models/database.models';
 import { InvoicePrintComponent, PrintableInvoiceData } from '../invoice-print/invoice-print.component';
 import { ExternalDocumentHandover } from '@core/models/handover.model';
+import { buildInvoicesDocXml } from '@core/services/mydata-xml-builder';
 
 @Component({
   selector: 'maranth-invoice-builder',
@@ -38,448 +42,23 @@ import { ExternalDocumentHandover } from '@core/models/handover.model';
     ProductImportModalComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6 no-print">
-      
-      <!-- Top Action Bar -->
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-5 gap-4">
-        <div>
-          <div class="flex items-center gap-2.5 flex-wrap">
-            <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Νέο Παραστατικό</h1>
-            <span class="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg font-mono font-medium bg-slate-100 text-slate-600 border border-slate-200">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              {{ autoSaveStatus() }}
-            </span>
-            @if (isMovementDocument()) {
-              <span class="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg font-semibold bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs">
-                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
-                AADE Phase B: Ψηφιακή Διακίνηση
-              </span>
-            }
-          </div>
-          <p class="text-xs text-slate-500 mt-1">Maranth B2B Timologio &bull; AADE myDATA Gateway</p>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
-          <button
-            type="button"
-            (click)="onResetForm()"
-            class="inline-flex items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs transition active:scale-98"
-          >
-            <span class="text-slate-400">↺</span>
-            <span>Καθαρισμός</span>
-          </button>
-
-          <button
-            type="button"
-            (click)="onSaveDraftManually()"
-            class="inline-flex items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-200 shadow-2xs transition active:scale-98"
-          >
-            <span class="text-slate-400">💾</span>
-            <span>Αποθήκευση</span>
-          </button>
-
-          <button
-            type="button"
-            (click)="onOpenPreview()"
-            [disabled]="invoiceForm.invalid"
-            class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-green-600 to-indigo-600 hover:from-green-700 hover:to-indigo-700 shadow-sm shadow-green-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition active:scale-98"
-          >
-            <span>📄</span>
-            <span>Εκτύπωση / Έκδοση</span>
-          </button>
-        </div>
-      </div>
-
-      <form [formGroup]="invoiceForm" class="space-y-6">
-        <!-- Recipient & Document Info -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs md:col-span-2 space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-700">Στοιχεία Πελάτη / Λήπτη</h2>
-              @if (customerAfmValue) {
-                @if (isAfmValid()) {
-                  <span class="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    ✓ Έγκυρο Α.Φ.Μ.
-                  </span>
-                } @else {
-                  <span class="text-[11px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                    ✕ Μη έγκυρο Α.Φ.Μ.
-                  </span>
-                }
-              }
-            </div>
-
-            <div formGroupName="customer" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div class="relative">
-                <label class="block text-xs font-medium text-slate-600 mb-1">Α.Φ.Μ. *</label>
-                <div class="flex rounded-md shadow-2xs">
-                  <input
-                    type="text"
-                    formControlName="afm"
-                    maxlength="9"
-                    (input)="onCustomerSearch($any($event.target).value)"
-                    placeholder="9 ψηφία"
-                    class="block w-full rounded-l-md border-slate-300 text-sm px-3 py-2 border font-mono focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                  
-                  <button
-                    type="button"
-                    (click)="triggerGsisLookup()"
-                    [disabled]="gsisLoading()"
-                    class="inline-flex items-center px-3 rounded-r-md border border-l-0 border-slate-300 bg-slate-50 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition"
-                  >
-                    @if (gsisLoading()) {
-                      <span class="inline-block animate-spin mr-1">⌛</span>
-                    }
-                    GSIS
-                  </button>
-                </div>
-
-                @if (customerResults().length > 0) {
-                  <div class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-40 max-h-52 overflow-y-auto divide-y divide-slate-100">
-                    @for (cust of customerResults(); track cust.id) {
-                      <button
-                        type="button"
-                        (click)="selectCustomer(cust)"
-                        class="w-full px-3.5 py-2 text-left hover:bg-indigo-50/70 transition flex items-center justify-between text-xs"
-                      >
-                        <div>
-                          <p class="font-bold text-slate-900">{{ cust.legalName }}</p>
-                          <p class="text-[10px] text-slate-500 font-mono">ΑΦΜ: {{ cust.afm }} | ΔΟΥ: {{ cust.doy || '—' }}</p>
-                        </div>
-                        <span class="text-[10px] text-indigo-600 font-semibold">Επιλογή</span>
-                      </button>
-                    }
-                  </div>
-                }
-
-                @if (afmInvalid) {
-                  <span class="text-xs text-rose-600 mt-1 block">Μη έγκυρο Α.Φ.Μ. (Modulo 11)</span>
-                }
-                @if (gsisError()) {
-                  <span class="text-xs text-amber-600 mt-1 block">{{ gsisError() }}</span>
-                }
-              </div>
-
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">Επωνυμία *</label>
-                <input
-                  type="text"
-                  formControlName="legalName"
-                  class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border focus:ring-indigo-500 focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">Δ.Ο.Υ.</label>
-                <input
-                  type="text"
-                  formControlName="doy"
-                  class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border"
-                />
-              </div>
-
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">Email</label>
-                <input
-                  type="email"
-                  formControlName="email"
-                  class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border"
-                />
-              </div>
-            </div>
-          </div>
-
-          <!-- Document Series & Type -->
-          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-4">
-            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-700">Στοιχεία Σειράς</h2>
-            <div class="space-y-3">
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">Τύπος Παραστατικού</label>
-                <select formControlName="invoiceType" class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border font-medium">
-                  <option value="1.1">1.1 Τιμολόγιο Πώλησης</option>
-                  <option value="1.2">1.2 Τιμολόγιο Πώλησης / Δελτίο Αποστολής (Ex-Van)</option>
-                  <option value="2.1">2.1 Τιμολόγιο Παροχής Υπηρεσιών</option>
-                  <option value="9.1">9.1 Δελτίο Αποστολής (Διακίνηση Αγαθών)</option>
-                  <option value="5.1">5.1 Πιστωτικό Τιμολόγιο</option>
-                  <option value="PROFORMA">Προσφορά / Προτιμολόγιο</option>
-                </select>
-              </div>
-
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1">Σειρά</label>
-                  <input type="text" formControlName="series" class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border uppercase" />
-                </div>
-                <div>
-                  <label class="block text-xs font-medium text-slate-600 mb-1">Αριθμός</label>
-                  <input type="number" formControlName="documentNumber" class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border" />
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-xs font-medium text-slate-600 mb-1">Ημερομηνία</label>
-                <input type="date" formControlName="issueDate" class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- GOODS MOVEMENT PANEL (Rendered for 1.2 and 9.1) -->
-        @if (isMovementDocument()) {
-          <div formGroupName="movement" class="bg-amber-50/70 border border-amber-300 rounded-xl p-5 shadow-2xs space-y-4">
-            <div class="flex items-center justify-between border-b border-amber-200 pb-3">
-              <div class="flex items-center gap-2">
-                <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                <h3 class="text-sm font-bold uppercase tracking-wider text-amber-900">
-                  Στοιχεία Διακίνησης Αγαθών (AADE Ψηφιακό Δελτίο Αποστολής)
-                </h3>
-              </div>
-              <span class="text-[11px] font-mono font-medium text-amber-800">Υποχρεωτικό για διαδρομές van & φορτηγών</span>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1">Αρ. Κυκλοφορίας Οχήματος</label>
-                <input
-                  type="text"
-                  formControlName="vehicleNumber"
-                  placeholder="π.χ. IEB-4892"
-                  class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border uppercase font-mono font-bold bg-white"
-                />
-              </div>
-
-              <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1">Σκοπός Διακίνησης</label>
-                <select formControlName="movePurpose" class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border bg-white">
-                  <option [value]="1">1 - Πώληση</option>
-                  <option [value]="2">2 - Διακίνηση μεταξύ εγκαταστάσεων</option>
-                  <option [value]="3">3 - Αποθήκευση σε τρίτους</option>
-                  <option [value]="4">4 - Επεξεργασία / Συναρμολόγηση</option>
-                  <option [value]="5">5 - Δειγματισμός / Έκθεση</option>
-                  <option [value]="6">6 - Επιστροφή</option>
-                </select>
-              </div>
-
-              <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1">Ημ/νία & Ώρα Έναρξης Διακίνησης</label>
-                <input
-                  type="datetime-local"
-                  formControlName="dispatchDateTime"
-                  class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border bg-white font-mono"
-                />
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-              <div formGroupName="addressFrom" class="p-3 bg-white/80 rounded-lg border border-amber-200">
-                <span class="block text-[10px] font-bold uppercase text-slate-500 mb-2">Τόπος Έναρξης (Φόρτωση / Έδρα)</span>
-                <div class="grid grid-cols-3 gap-2">
-                  <input type="text" formControlName="street" placeholder="Οδός" class="col-span-2 text-xs border rounded p-1.5" />
-                  <input type="text" formControlName="number" placeholder="Αριθμός" class="text-xs border rounded p-1.5" />
-                  <input type="text" formControlName="postalCode" placeholder="Τ.Κ." class="text-xs border rounded p-1.5" />
-                  <input type="text" formControlName="city" placeholder="Πόλη" class="col-span-2 text-xs border rounded p-1.5" />
-                </div>
-              </div>
-
-              <div formGroupName="addressTo" class="p-3 bg-white/80 rounded-lg border border-amber-200">
-                <span class="block text-[10px] font-bold uppercase text-slate-500 mb-2">Τόπος Προορισμού (Παράδοση)</span>
-                <div class="grid grid-cols-3 gap-2">
-                  <input type="text" formControlName="street" placeholder="Οδός" class="col-span-2 text-xs border rounded p-1.5" />
-                  <input type="text" formControlName="number" placeholder="Αριθμός" class="text-xs border rounded p-1.5" />
-                  <input type="text" formControlName="postalCode" placeholder="Τ.Κ." class="text-xs border rounded p-1.5" />
-                  <input type="text" formControlName="city" placeholder="Πόλη" class="col-span-2 text-xs border rounded p-1.5" />
-                </div>
-              </div>
-            </div>
-          </div>
-        }
-
-        <!-- Product Search Toolbar -->
-        <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
-          <div class="flex items-center justify-between">
-            <label class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-              <span>🔍</span>
-              <span>Αναζήτηση Προϊόντος / Σάρωση Barcode</span>
-            </label>
-
-            <button
-              type="button"
-              (click)="showImportModal.set(true)"
-              class="px-2.5 py-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100/70 border border-blue-200 rounded-lg transition flex items-center gap-1.5"
-            >
-              <span>📁</span>
-              <span>Εισαγωγή Excel / CSV</span>
-            </button>
-          </div>
-
-          <div class="relative">
-            <input
-              type="text"
-              [value]="searchQuery()"
-              (input)="onSearchChange($any($event.target).value)"
-              (keydown.enter)="onBarcodeEnter(); $event.preventDefault()"
-              placeholder="Πληκτρολογήστε όνομα ή σκανάρετε barcode και πατήστε Enter..."
-              class="w-full text-xs rounded-xl border-slate-200 px-3.5 py-2.5 border bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-medium"
-            />
-
-            @if (searchResults().length > 0) {
-              <div class="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-slate-100">
-                @for (item of searchResults(); track item.id) {
-                  <button
-                    type="button"
-                    (click)="addProductToInvoice(item)"
-                    class="w-full px-4 py-2.5 text-left text-xs hover:bg-blue-50/60 transition flex items-center justify-between group"
-                  >
-                    <div>
-                      <p class="font-bold text-slate-800 group-hover:text-blue-700">{{ item.name }}</p>
-                      @if (item.barcode) {
-                        <p class="text-[10px] text-slate-400 font-mono">Barcode: {{ item.barcode }}</p>
-                      }
-                    </div>
-                    <div class="text-right">
-                      <span class="font-mono font-bold text-slate-900 block">{{ item.price | number:'1.2-2' }} €</span>
-                      <span class="text-[10px] text-slate-500">ΦΠΑ {{ item.taxRate || 24 }}%</span>
-                    </div>
-                  </button>
-                }
-              </div>
-            }
-          </div>
-        </div>
-
-        <!-- Line Items -->
-        <div class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-          <div class="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-            <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-700">Γραμμές Ειδών / Υπηρεσιών</h2>
-            <button
-              type="button"
-              (click)="addLineItem()"
-              class="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-md text-xs font-semibold transition"
-            >
-              + Προσθήκη Γραμμής
-            </button>
-          </div>
-
-          <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-slate-200 text-left text-sm">
-              <thead class="bg-slate-50 text-xs font-medium text-slate-500 uppercase">
-                <tr>
-                  <th class="px-4 py-3">Περιγραφή</th>
-                  <th class="px-3 py-3 w-24">Ποσότητα</th>
-                  @if (invoiceForm.get('invoiceType')?.value !== '9.1') {
-                    <th class="px-3 py-3 w-28">Τιμή (€)</th>
-                    <th class="px-3 py-3 w-20">Έκπτ. %</th>
-                    <th class="px-3 py-3 w-28">Καθαρή</th>
-                  }
-                  <th class="px-3 py-3 w-32">ΦΠΑ</th>
-                  @if (invoiceForm.get('invoiceType')?.value !== '9.1') {
-                    <th class="px-3 py-3 w-28">Σύνολο</th>
-                  }
-                  <th class="px-2 py-3 w-10"></th>
-                </tr>
-              </thead>
-              <tbody formArrayName="lines" class="divide-y divide-slate-100">
-                @for (line of linesArray.controls; track $index) {
-                  <tr [formGroupName]="$index" class="hover:bg-slate-50/50">
-                    <td class="p-3">
-                      <input type="text" formControlName="description" placeholder="Περιγραφή είδους" class="w-full text-sm border-slate-200 rounded px-2 py-1.5 border font-medium text-slate-800" />
-                    </td>
-                    <td class="p-3">
-                      <input type="number" formControlName="quantity" (input)="recalculateLine($index)" class="w-full text-sm border-slate-200 rounded px-2 py-1.5 border font-bold text-slate-900" />
-                    </td>
-                    @if (invoiceForm.get('invoiceType')?.value !== '9.1') {
-                      <td class="p-3">
-                        <input type="number" step="0.01" formControlName="unitPrice" (input)="recalculateLine($index)" class="w-full text-sm border-slate-200 rounded px-2 py-1 border" />
-                      </td>
-                      <td class="p-3">
-                        <input type="number" formControlName="discountPercentage" (input)="recalculateLine($index)" class="w-full text-sm border-slate-200 rounded px-2 py-1 border" />
-                      </td>
-                      <td class="p-3 font-mono text-slate-700">
-                        {{ line.get('netValue')?.value | number: '1.2-2' }}
-                      </td>
-                    }
-                    <td class="p-3">
-                      <select formControlName="vatRateCategory" (change)="recalculateLine($index)" class="w-full text-xs border-slate-200 rounded px-2 py-1.5 border bg-white font-medium">
-                        <option [value]="1">24% (Κανονικό)</option>
-                        <option [value]="2">13% (Μειωμένο - Τρόφιμα)</option>
-                        <option [value]="3">6% (Υπερμειωμένο)</option>
-                        <option [value]="7">0% (Απαλλαγή)</option>
-                      </select>
-                    </td>
-                    @if (invoiceForm.get('invoiceType')?.value !== '9.1') {
-                      <td class="p-3 font-mono font-bold text-slate-900">
-                        {{ line.get('totalValue')?.value | number: '1.2-2' }}
-                      </td>
-                    }
-                    <td class="p-3 text-center">
-                      <button type="button" (click)="removeLineItem($index)" class="text-rose-400 hover:text-rose-600 font-bold text-lg">×</button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="flex justify-end">
-          <div class="w-full md:w-80 bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-            @if (invoiceForm.get('invoiceType')?.value === '9.1') {
-              <div class="p-3 bg-amber-50 rounded-lg border border-amber-200 text-center">
-                <span class="block text-xs font-bold text-amber-900 uppercase tracking-wide">Δελτίο Διακίνησης (9.1)</span>
-                <span class="text-[11px] text-amber-700">Μη τιμολογιακό παραστατικό μεταφοράς. Καθαρή αξία: 0.00 €</span>
-              </div>
-            } @else {
-              <div class="flex justify-between text-sm text-slate-600">
-                <span>Καθαρή Αξία:</span>
-                <span class="font-mono font-medium">{{ computedTotals().totalNetValue | currency: 'EUR' }}</span>
-              </div>
-              <div class="flex justify-between text-sm text-slate-600">
-                <span>Φ.Π.Α.:</span>
-                <span class="font-mono font-medium">{{ computedTotals().totalVatAmount | currency: 'EUR' }}</span>
-              </div>
-              <div class="border-t border-slate-200 pt-3 flex justify-between text-base font-bold text-slate-900">
-                <span>Σύνολο:</span>
-                <span class="font-mono text-indigo-600">{{ computedTotals().totalGrossValue | currency: 'EUR' }}</span>
-              </div>
-            }
-          </div>
-        </div>
-      </form>
-
-      <!-- PRINT PREVIEW MODAL -->
-      @if (showPrintModal() && printableData()) {
-        <maranth-invoice-print
-          [invoice]="printableData()!"
-          (close)="showPrintModal.set(false)"
-        ></maranth-invoice-print>
-      }
-
-      <!-- EXCEL / CSV IMPORT MODAL -->
-      @if (showImportModal()) {
-        <maranth-product-import-modal
-          (close)="showImportModal.set(false)"
-          (imported)="autoSaveStatus.set('Εισήχθησαν ' + $event + ' προϊόντα!')"
-        ></maranth-product-import-modal>
-      }
-    </div>
-  `,
+  templateUrl: `./invoice-builder.component.html`,
 })
 export class InvoiceBuilderComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
+  private readonly myData = inject(MyDataService);
   private readonly serializer = inject(AadeSerializerService);
   private readonly db = inject(LocalDbService);
   public readonly auth = inject(AuthTenantService);
   private readonly cartBridge = inject(CartBridgeService);
   private readonly gsisService = inject(GsisLookupService);
   private readonly route = inject(ActivatedRoute);
+  private readonly tenantIntegration = inject(TenantIntegrationService);
 
   public readonly gsisLoading = signal<boolean>(false);
   public readonly gsisError = signal<string | null>(null);
 
-  public readonly currentDraftId = signal<string>(crypto.randomUUID());
+  public readonly currentDraftId = signal<string | null>(crypto.randomUUID());
   public readonly autoSaveStatus = signal<string>('Έτοιμο');
   public readonly showImportModal = signal<boolean>(false);
 
@@ -493,8 +72,8 @@ export class InvoiceBuilderComponent implements OnInit {
   public readonly computedTotals = computed(() =>
     calculateInvoiceTotals(this.lineItemsSignal())
   );
+  
 
-  public readonly isMovementDocument = signal<boolean>(false);
   public readonly showPrintModal = signal<boolean>(false);
   public readonly printableData = signal<PrintableInvoiceData | null>(null);
 
@@ -505,7 +84,7 @@ export class InvoiceBuilderComponent implements OnInit {
     series: ['', Validators.required],
     documentNumber: [1, [Validators.required, Validators.min(1)]],
     issueDate: [new Date().toISOString().substring(0, 10), Validators.required],
-    invoiceType: ['9.1', Validators.required],
+    invoiceType: ['1.1', Validators.required],
     customer: this.fb.group({
       afm: ['', [Validators.required, greekAfmValidator()]],
       legalName: ['', Validators.required],
@@ -517,8 +96,8 @@ export class InvoiceBuilderComponent implements OnInit {
       city: [''],
     }),
     movement: this.fb.group({
-      vehicleNumber: ['', Validators.required],
-      movePurpose: [6, Validators.required],
+      vehicleNumber: [''],
+      movePurpose: [1, Validators.required],
       dispatchDateTime: [new Date().toISOString().substring(0, 16), Validators.required],
       addressFrom: this.fb.group({
         street: ['', Validators.required],
@@ -540,6 +119,29 @@ export class InvoiceBuilderComponent implements OnInit {
     const afm = this.invoiceForm.get('customer.afm')?.value;
     return Boolean(afm && isValidGreekAfm(afm));
   });
+  
+// Helper: read the current type safely
+private get currentDocType(): string {
+  return String(this.invoiceForm?.get('invoiceType')?.value ?? '').trim();
+}
+
+/**
+ * Any document that moves physical goods and requires the Goods Movement Panel:
+ * 9.1, 9.3 (pure dispatches) and 1.2 (combined invoice + dispatch)
+ */
+get isMovementDocument(): boolean {
+  const type = this.currentDocType;
+  return type === '1.1' || type === '9.1' || type === '9.3';
+}
+
+/**
+ * Pure dispatch notes (non-fiscal: zero net/VAT totals, quantity15, no revenue classification):
+ * 9.1 and 9.3
+ */
+get isPureDispatch(): boolean {
+  const type = this.currentDocType;
+  return type === '9.1' || type === '9.3';
+}
 
   get customerAfmValue(): string {
     return this.invoiceForm.get('customer.afm')?.value || '';
@@ -553,6 +155,44 @@ export class InvoiceBuilderComponent implements OnInit {
     const ctrl = this.invoiceForm.get('customer.afm');
     return !!(ctrl?.touched && ctrl?.errors?.['invalidGreekAfm']);
   }
+
+  get isAfmInvalid(): boolean {
+  const ctrl = this.invoiceForm.get('customer.afm');
+  if (!ctrl) return false;
+  const len = String(ctrl.value || '').trim().length;
+  return ctrl.hasError('invalidGreekAfm') && (ctrl.touched || len >= 9);
+}
+
+  constructor() {
+    effect(() => {
+  const handover = this.tenantIntegration.pendingHandover();
+  if (handover) {
+    this.applyIncomingHandover(handover);
+    this.tenantIntegration.clearPending();
+  }
+});
+  }
+
+  public checkFormValidity(): void {
+  const getInvalidControls = (formGroup: any, parentKey = ''): void => {
+    Object.keys(formGroup.controls).forEach(key => {
+      const control = formGroup.get(key);
+      const fullPath = parentKey ? `${parentKey}.${key}` : key;
+      if (control?.invalid) {
+        console.warn(`❌ INVALID FIELD: [${fullPath}]`, control.errors, 'Current value:', control.value);
+      }
+      if (control?.controls) {
+        getInvalidControls(control, fullPath);
+      }
+    });
+  };
+
+  console.group('🔍 Form Validity Audit');
+  console.log('Form Status:', this.invoiceForm.status);
+  console.log('Form Valid?', this.invoiceForm.valid);
+  getInvalidControls(this.invoiceForm);
+  console.groupEnd();
+}
 
   async ngOnInit(): Promise<void> {
     const currentTenantId = this.auth.currentTenantId();
@@ -570,9 +210,10 @@ export class InvoiceBuilderComponent implements OnInit {
       const myBusiness = await this.db.getSettingsForTenant(currentTenantId);
       if (myBusiness) {
         const b = myBusiness as any;
-        if (!this.invoiceForm.get('series')?.value) {
-          this.invoiceForm.get('series')?.setValue(b.defaultSeries || 'ΕΠΙΣΤΡ', { emitEvent: false });
-        }
+        // Default to 'A' (or whatever is in settings), NOT 'ΕΠΙΣΤΡ'
+        const initialSeries = b.defaultSeries || 'Α';
+        this.invoiceForm.get('series')?.setValue(initialSeries, { emitEvent: true });
+        
         this.invoiceForm.get('movement.addressFrom')?.patchValue({
           street: b.street || '',
           number: b.number || '',
@@ -600,13 +241,25 @@ export class InvoiceBuilderComponent implements OnInit {
       }
     }
 
-    this.updateMovementDocState(this.invoiceForm.get('invoiceType')?.value);
+    // 4. Initial sequential number calculation
+    await this.updateNextDocumentNumber();
 
+    // 5. Independent listener: Series changes -> update sequential number
+    this.invoiceForm.get('series')?.valueChanges.subscribe(async (newSeries) => {
+      if (newSeries) {
+        await this.updateNextDocumentNumber();
+      }
+    });
+
+    // 6. Independent listener: Document type changes -> toggle movement panel
+    this.updateMovementDocState(this.invoiceForm.get('invoiceType')?.value);
     this.invoiceForm.get('invoiceType')?.valueChanges.subscribe((type) => {
       this.updateMovementDocState(type);
     });
 
+    // 7. Combined global form listener: validity check & debounced auto-save
     this.invoiceForm.valueChanges.subscribe(() => {
+      this.checkFormValidity();
       this.autoSaveStatus.set('Αποθήκευση...');
       this.debouncedSave();
     });
@@ -615,30 +268,31 @@ export class InvoiceBuilderComponent implements OnInit {
   private restoreDraft(draft: LocalInvoiceRecord): void {
     try {
       const payload = JSON.parse(draft.payloadJson);
-      this.currentDraftId.set(draft.id);
+      this.currentDraftId.set(draft.id == null ? null : String(draft.id));
 
       this.invoiceForm.enable({ emitEvent: false });
       this.invoiceForm.patchValue(payload, { emitEvent: false });
 
       this.linesArray.clear();
       if (Array.isArray(payload.lines) && payload.lines.length > 0) {
-        const isDeltio = (payload.invoiceType === '9.1' || payload.documentType === '9.1');
+  const currentType = String(payload.invoiceType ?? payload.documentType ?? '').trim();
+  const isDeltio = currentType === '9.1' || currentType === '9.3';
 
-        for (const l of payload.lines) {
-          this.linesArray.push(
-            this.fb.group({
-              description: [l.description, Validators.required],
-              quantity: [l.quantity, [Validators.required, Validators.min(0.01)]],
-              unitPrice: [isDeltio ? 0 : (l.unitPrice ?? 0), [Validators.required, Validators.min(0)]],
-              discountPercentage: [l.discountPercentage || 0],
-              netValue: [{ value: isDeltio ? 0 : (l.netValue ?? 0), disabled: true }],
-              vatRateCategory: [l.vatRateCategory || 1],
-              vatAmount: [{ value: isDeltio ? 0 : (l.vatAmount ?? 0), disabled: true }],
-              totalValue: [{ value: isDeltio ? 0 : (l.totalValue ?? 0), disabled: true }],
-            })
-          );
-        }
-      } else {
+  for (const l of payload.lines) {
+    this.linesArray.push(
+      this.fb.group({
+        description: [l.description || '', Validators.required],
+        quantity: [l.quantity ?? 1, [Validators.required, Validators.min(0.01)]],
+        unitPrice: [isDeltio ? 0 : (l.unitPrice ?? 0), [Validators.required, Validators.min(0)]],
+        discountPercentage: [l.discountPercentage || 0],
+        netValue: [{ value: isDeltio ? 0 : (l.netValue ?? 0), disabled: true }],
+        vatRateCategory: [l.vatRateCategory || 1],
+        vatAmount: [{ value: isDeltio ? 0 : (l.vatAmount ?? 0), disabled: true }],
+        totalValue: [{ value: isDeltio ? 0 : (l.totalValue ?? 0), disabled: true }],
+      })
+    );
+  }
+} else {
         this.seedInitialLine();
       }
 
@@ -704,16 +358,22 @@ export class InvoiceBuilderComponent implements OnInit {
   }
 
   public setSupplierReturnPreset(): void {
+    const returnSeries = 'ΕΠΙΣΤΡ';
+
     this.invoiceForm.patchValue({
-      invoiceType: '9.1',
-      series: 'ΕΠΙΣΤΡ',
+      invoiceType: '9.3', // ✅ Standalone dispatch note (or keep as needed for returns)
+      series: returnSeries,
       movement: {
         vehicleNumber: '',
-        movePurpose: 6,
+        movePurpose: 6, // 6 = Επιστροφή (Return)
         dispatchDateTime: new Date().toISOString().substring(0, 16),
       },
     }, { emitEvent: false });
-    this.updateMovementDocState('9.1');
+
+    this.updateMovementDocState('9.3');
+    
+    // Explicitly recalculate the sequential number for series 'ΕΠΙΣΤΡ'
+    this.updateNextDocumentNumber();
   }
 
   public mapVatRateToCategory(rate: unknown): number {
@@ -769,7 +429,7 @@ export class InvoiceBuilderComponent implements OnInit {
       city: c.address?.city ?? '',
     });
 
-    if (this.isMovementDocument() && c.address) {
+    if (this.isMovementDocument && c.address) {
       this.invoiceForm.get('movement.addressTo')?.patchValue({
         street: c.address.street ?? '',
         number: c.address.number ?? '',
@@ -844,8 +504,8 @@ export class InvoiceBuilderComponent implements OnInit {
   }
 
   private updateMovementDocState(type: string | null | undefined): void {
-    const isMov = type === '1.2' || type === '9.1';
-    this.isMovementDocument.set(isMov);
+    const isMov = type === '1.1' || type === '9.1' || type === '9.3';
+    // this.isMovementDocument.set(isMov);
     const movementCtrl = this.invoiceForm.get('movement');
     if (isMov) {
       movementCtrl?.enable({ emitEvent: false });
@@ -860,12 +520,30 @@ export class InvoiceBuilderComponent implements OnInit {
   }
 
   private saveTimeout?: any;
+  
   private debouncedSave(): void {
     clearTimeout(this.saveTimeout);
     this.saveTimeout = setTimeout(async () => {
       await this.persistDraft();
       this.autoSaveStatus.set('Αποθηκεύτηκε τοπικά');
     }, 800);
+  }
+
+  /**
+   * Fetches the next available sequential number for the active tenant and series
+   */
+  public async updateNextDocumentNumber(): Promise<void> {
+    const tenantId = this.auth.currentTenantId();
+    const series = this.invoiceForm.get('series')?.value;
+    if (!tenantId || !series) return;
+
+    // Do not overwrite document number if we are viewing/editing an existing saved draft
+    if (this.currentDraftId() && this.invoiceForm.get('documentNumber')?.dirty) {
+      return;
+    }
+
+    const nextNumber = await this.db.getNextDocumentNumber(tenantId, series);
+    this.invoiceForm.get('documentNumber')?.setValue(nextNumber, { emitEvent: false });
   }
 
   public async onSaveDraftManually(): Promise<void> {
@@ -881,7 +559,7 @@ export class InvoiceBuilderComponent implements OnInit {
     const record: LocalInvoiceRecord = {
       id: this.currentDraftId() || crypto.randomUUID(),
       tenantId: tenantId,
-      series: formVal.series || 'ΕΠΙΣΤΡ',
+      series: formVal.series || 'A',
       documentNumber: Number(formVal.documentNumber) || 1,
       issueDate: formVal.issueDate || new Date().toISOString().substring(0, 10),
       invoiceType: formVal.invoiceType || '9.1',
@@ -914,10 +592,10 @@ export class InvoiceBuilderComponent implements OnInit {
     const s = (settings || {}) as any;
 
     this.invoiceForm.reset({
-      series: s.defaultSeries || 'ΕΠΙΣΤΡ',
+      series: s.defaultSeries || 'Α',
       documentNumber: 1,
       issueDate: new Date().toISOString().substring(0, 10),
-      invoiceType: '9.1',
+      invoiceType: '1.1', // <-- Reset to 1.1
       customer: {
         afm: '',
         legalName: '',
@@ -930,7 +608,7 @@ export class InvoiceBuilderComponent implements OnInit {
       },
       movement: {
         vehicleNumber: '',
-        movePurpose: 6,
+        movePurpose: 1,
         dispatchDateTime: new Date().toISOString().substring(0, 16),
         addressFrom: {
           street: s.street || s.address?.street || '',
@@ -949,6 +627,7 @@ export class InvoiceBuilderComponent implements OnInit {
 
     this.linesArray.clear();
     this.seedInitialLine();
+    this.updateMovementDocState('1.1');
     this.autoSaveStatus.set('Καθαρίστηκε');
   }
 
@@ -1109,7 +788,7 @@ if (cachedCustomer) {
       customerGroup.get('city')?.setValue(data.address.city);
     }
 
-    if (this.isMovementDocument()) {
+    if (this.isMovementDocument) {
       const addressToGroup = this.invoiceForm.get('movement.addressTo');
       if (addressToGroup) {
         addressToGroup.get('street')?.setValue(data.address.street);
@@ -1168,7 +847,7 @@ if (cachedCustomer) {
 
     const isMovementOnly = formVal.invoiceType === '9.1';
 
-    const movementData: GoodsMovementData | undefined = this.isMovementDocument()
+    const movementData: GoodsMovementData | undefined = this.isMovementDocument
       ? {
           vehicleNumber: formVal.movement?.vehicleNumber || '',
           movePurpose: (Number(formVal.movement?.movePurpose) || 6) as MovementPurposeCode,
@@ -1222,6 +901,8 @@ if (cachedCustomer) {
       email: s.email || '',
     };
 
+
+
     this.printableData.set({
       series: formVal.series!,
       documentNumber: Number(formVal.documentNumber),
@@ -1241,6 +922,66 @@ if (cachedCustomer) {
     this.showPrintModal.set(true);
   }
 
+  public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
+    try {
+      const result = await this.myData.transmitInvoice(invoice);
+
+      if (result.success && result.mark) {
+        console.log(`myDATA Transmission Successful! MARK: ${result.mark}, UID: ${result.uid}`);
+
+        invoice.mark = result.mark;
+        invoice.uid = result.uid;
+        invoice.qrUrl = result.qrUrl ?? invoice.qrUrl ?? '';
+        invoice.transmissionStatus = 'TRANSMITTED';
+        invoice.updatedAt = Date.now();
+
+        const invoiceId = invoice.id != null ? String(invoice.id) : null;
+        if (invoiceId) {
+          await this.db.invoices.update(invoiceId, {
+            mark: result.mark,
+            uid: result.uid,
+            qrUrl: invoice.qrUrl,
+            transmissionStatus: 'TRANSMITTED',
+            updatedAt: invoice.updatedAt,
+          });
+          this.autoSaveStatus.set(`Εκδόθηκε με επιτυχία! ΜΑΡΚ: ${result.mark}`);
+        }
+
+        // Show print modal...
+        // ... (existing printableData.set logic) ...
+
+        // Prepare the counter for the NEXT invoice automatically:
+        const tenantId = this.auth.currentTenantId();
+        if (tenantId) {
+          const nextAa = await this.db.getNextDocumentNumber(tenantId, invoice.series);
+          // Set up a fresh draft ID and update documentNumber
+          this.currentDraftId.set(crypto.randomUUID());
+          this.invoiceForm.get('documentNumber')?.setValue(nextAa, { emitEvent: false });
+        }
+      } else {
+        console.warn('myDATA Transmission rejected:', result.error);
+        const invoiceId = invoice.id != null ? String(invoice.id) : null;
+        if (invoiceId) {
+          await this.db.invoices.update(invoiceId, {
+            transmissionStatus: 'FAILED',
+            updatedAt: Date.now(),
+          });
+        }
+        this.autoSaveStatus.set(`Αποτυχία myDATA: ${result.error || 'Σφάλμα myDATA'}`);
+      }
+      const tenantId = this.auth.currentTenantId();
+        if (tenantId) {
+          const nextAa = await this.db.getNextDocumentNumber(tenantId, invoice.series);
+          // Set up a fresh draft ID and update documentNumber
+          this.currentDraftId.set(crypto.randomUUID());
+          this.invoiceForm.get('documentNumber')?.setValue(nextAa, { emitEvent: false });
+        }
+    } catch (err: unknown) {
+      console.error('Network or gateway failure during myDATA transmission:', err);
+      this.autoSaveStatus.set('Σφάλμα δικτύου κατά την αποστολή');
+    }
+  }
+
   private syncLines(): void {
     const isDeltio = this.invoiceForm.get('invoiceType')?.value === '9.1';
 
@@ -1257,22 +998,29 @@ if (cachedCustomer) {
 
     const raw = this.linesArray.getRawValue() as any[];
     const items: InvoiceLineItem[] = raw.map((r, i) => {
-      const netVal = isDeltio ? 0 : Number(r.netValue) || 0;
-      const vatCat = (Number(r.vatRateCategory) || 1) as VatRateCategory;
-      const unitPr = isDeltio ? 0 : Number(r.unitPrice) || 0;
-      const vatAmt = isDeltio ? 0 : Number(r.vatAmount) || 0;
-      const totVal = isDeltio ? 0 : Number(r.totalValue) || 0;
+      const qty = Number(r.quantity) || 1;
+      let unitPr = isDeltio ? 0 : Number(r.unitPrice) || 0;
 
+      // Compute net value properly if not deltio
+      let netVal = 0;
+      if (!isDeltio) {
+        netVal = Number(r.netValue) > 0 ? Number(r.netValue) : Number((qty * unitPr).toFixed(2));
+      }
+
+      const vatCat = (Number(r.vatRateCategory) || 1) as VatRateCategory;
       let vatPct = 24;
       if (vatCat === 2) vatPct = 13;
       else if (vatCat === 3) vatPct = 6;
       else if (vatCat === 7) vatPct = 0;
 
+      const vatAmt = isDeltio ? 0 : Number(((netVal * vatPct) / 100).toFixed(2));
+      const totVal = isDeltio ? 0 : Number((netVal + vatAmt).toFixed(2));
+
       return {
         id: String(i + 1),
         lineNumber: i + 1,
         description: r.description || '',
-        quantity: Number(r.quantity) || 1,
+        quantity: qty,
         unitPrice: unitPr,
         discountPercentage: 0,
         netValue: netVal,
@@ -1292,5 +1040,42 @@ if (cachedCustomer) {
     });
 
     this.lineItemsSignal.set(items);
+  }
+
+  public async onSaveAndSubmit(): Promise<void> {
+    if (this.invoiceForm.invalid) {
+      this.invoiceForm.markAllAsTouched();
+      return;
+    }
+
+    this.syncLines();
+    const currentLines = this.lineItemsSignal();
+
+    const totalNet = currentLines.reduce((acc, item) => acc + (item.netValue || 0), 0);
+    const totalVat = currentLines.reduce((acc, item) => acc + (item.vatAmount || 0), 0);
+    const totalGross = currentLines.reduce((acc, item) => acc + (item.totalValue || 0), 0);
+
+    const invoiceRecord: LocalInvoiceRecord = {
+      id: this.currentDraftId() || crypto.randomUUID(),
+      tenantId: this.auth.currentTenantId() || 'tenant_minimarket',
+      series: this.invoiceForm.get('series')?.value || 'TEST',
+      documentNumber: Number(this.invoiceForm.get('documentNumber')?.value) || 1,
+      issueDate: this.invoiceForm.get('issueDate')?.value || new Date().toISOString().split('T')[0],
+      invoiceType: this.invoiceForm.get('invoiceType')?.value || '1.1',
+      customerAfm: this.invoiceForm.get('customer.afm')?.value || '',
+      customerName: this.invoiceForm.get('customer.legalName')?.value || '',
+      totalNet: Number(totalNet.toFixed(2)),
+      totalVat: Number(totalVat.toFixed(2)),
+      totalGross: Number(totalGross.toFixed(2)),
+      transmissionStatus: 'DRAFT',
+      payloadJson: JSON.stringify(this.invoiceForm.getRawValue()),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    await this.db.invoices.put(invoiceRecord);
+    console.log('Saved draft to Dexie with ID:', invoiceRecord.id);
+
+    await this.sendToMyData(invoiceRecord);
   }
 }

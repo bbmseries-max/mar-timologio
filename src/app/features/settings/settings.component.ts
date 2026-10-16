@@ -157,7 +157,7 @@ export class SettingsComponent implements OnInit {
     postalCode: ['', Validators.required],
     city: ['', Validators.required],
     branch: [0],
-    defaultSeries: ['ΕΠΙΣΤΡ'],
+    defaultSeries: ['A'],
     aadeUserId: [''],
     aadeSubscriptionKey: [''],
     isProduction: [false],

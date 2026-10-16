@@ -76,7 +76,7 @@ router.get('/lookup', async (req, res) => {
       postalAreaDescription: result.postal_area_description,
       firmActivationDate: result.firm_act_date,
       isNormalVatRegime: result.normal_vat_system === 'Y',
-      active: result.deactivation_flag === '1', // '1' means Active
+      active: result.deactivation_flag === '2' || !result.deactivation_flag || result.deactivation_flag === '0',
     });
   } catch (error) {
     console.error('GSIS SOAP Gateway Error:', error.message);

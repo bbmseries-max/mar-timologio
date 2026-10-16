@@ -46,6 +46,13 @@ export const routes: Routes = [
         title: 'Δελτία Διακίνησης — Maranth Hub',
       },
       {
+        path: 'archive',
+        loadComponent: () =>
+          import('./features/invoices/invoice-archive/invoice-archive.component').then(
+            (m) => m.InvoiceArchiveComponent
+          ),
+        },
+      {
         path: 'settings',
         loadComponent: () =>
           import('./features/settings/settings.component').then(

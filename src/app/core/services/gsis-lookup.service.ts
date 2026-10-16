@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, from, of, throwError } from 'rxjs';
 import { switchMap, catchError, delay, tap } from 'rxjs/operators';
 import { isValidGreekAfm } from '../utils/fiscal-engine';
-import { LocalDbService } from './local-db.service';
+import { LocalDbService, LocalCustomerRecord } from './local-db.service';
 import { AuthTenantService } from './auth-tenant.service';
 
 export interface GsisCompanyRecord {
@@ -26,18 +26,20 @@ export class GsisLookupService {
   private readonly db = inject(LocalDbService);
   private readonly auth = inject(AuthTenantService);
   private readonly http = inject(HttpClient);
-  private readonly apiEndpoint = '/api/gsis/lookup';
+
+  // Cloudflare Worker Live Gateway Endpoint
+  private readonly apiEndpoint = 'https://gsis-lookup.bbmseries.workers.dev/gsis/lookup';
 
   /**
    * Performs an automated lookup for an AFM.
    * Priority:
    * 1. Own Store Settings in Dexie
    * 2. Saved Customers / Suppliers in Dexie
-   * 3. Backend GSIS Proxy (AADE / Cloudflare Worker)
-   * 4. Offline Fallback
+   * 3. Cloudflare Worker GSIS Proxy
+   * 4. Safe Offline Fallback
    */
   public lookupAfm(afm: string): Observable<GsisCompanyRecord> {
-    const cleanAfm = (afm || '').trim();
+    const cleanAfm = (afm || '').replace(/\D/g, '').trim();
 
     if (!isValidGreekAfm(cleanAfm)) {
       return throwError(() => new Error('Το Α.Φ.Μ. δεν είναι αριθμητικά έγκυρο (Modulo 11).'));
@@ -50,10 +52,9 @@ export class GsisLookupService {
           return of(localRecord);
         }
 
-        // 2. Fetch from proxy endpoint
+        // 2. Fetch from Cloudflare Worker proxy endpoint
         return this.http.get<GsisCompanyRecord>(`${this.apiEndpoint}?afm=${cleanAfm}`).pipe(
           tap((remoteRecord) => {
-            // Cache successful lookups to Dexie for offline support and zero-latency hits
             if (remoteRecord && remoteRecord.legalName) {
               this.saveToDexieStorage(remoteRecord).catch((err) =>
                 console.warn('Failed to cache GSIS record in Dexie:', err)
@@ -77,7 +78,7 @@ export class GsisLookupService {
 
     // 1. Is this your own shop from /settings?
     const settings = await this.db.getSettingsForTenant(tenantId);
-    if (settings && settings.afm === afm) {
+    if (settings && (settings.afm || '').replace(/\D/g, '') === afm) {
       const s = settings as any;
       return {
         afm: settings.afm,
@@ -104,10 +105,10 @@ export class GsisLookupService {
         commercialTitle: c.tradeName || c.commercialTitle || cachedCustomer.legalName || '',
         doy: cachedCustomer.doy || c.taxOffice || '',
         doyDescr: cachedCustomer.doy || c.taxOffice || '',
-        postalAddress: c.address?.street || c.street || c.postalAddress || '',
-        postalAddressNo: c.address?.number || c.number || c.postalAddressNo || '',
-        postalZipCode: c.address?.postalCode || c.postalCode || c.postalZipCode || '',
-        postalAreaDescription: c.address?.city || c.city || c.postalAreaDescription || '',
+        postalAddress: cachedCustomer.address?.street || c.street || c.postalAddress || '',
+        postalAddressNo: cachedCustomer.address?.number || c.number || c.postalAddressNo || '',
+        postalZipCode: cachedCustomer.address?.postalCode || c.postalCode || c.postalZipCode || '',
+        postalAreaDescription: cachedCustomer.address?.city || c.city || c.postalAreaDescription || '',
         isNormalVatRegime: c.isNormalVatRegime ?? true,
         active: c.active ?? true,
       };
@@ -116,8 +117,8 @@ export class GsisLookupService {
     return null;
   }
 
-/**
-   * Persists newly fetched AADE records into Dexie storage via LocalDbService.
+  /**
+   * Persists newly fetched registry records into Dexie storage.
    */
   private async saveToDexieStorage(record: GsisCompanyRecord): Promise<void> {
     const tenantId = this.auth.currentTenantId();
@@ -126,24 +127,26 @@ export class GsisLookupService {
     const existing = await this.db.getCustomerByAfm(tenantId, record.afm);
     const now = new Date().toISOString();
 
-    await this.db.saveCustomer({
-      ...existing,
+    const customerRecord: LocalCustomerRecord = {
       id: existing?.id || crypto.randomUUID(),
       tenantId,
       afm: record.afm,
+      branch: 0,
+      country: 'GR',
       legalName: record.legalName,
-      tradeName: record.commercialTitle || record.legalName,
       doy: record.doyDescr || record.doy || '',
+      email: existing?.email || '',
+      phone: existing?.phone || '',
       address: {
         street: record.postalAddress || existing?.address?.street || '',
         number: record.postalAddressNo || existing?.address?.number || '',
         postalCode: record.postalZipCode || existing?.address?.postalCode || '',
         city: record.postalAreaDescription || existing?.address?.city || '',
       },
-      isNormalVatRegime: record.isNormalVatRegime ?? true,
-      active: record.active ?? true,
       updatedAt: now,
-    } as Parameters<LocalDbService['saveCustomer']>[0]);
+    };
+
+    await this.db.saveCustomer(customerRecord);
   }
 
   /**

@@ -16,7 +16,7 @@ import { LocalInvoiceRecord } from '@core/models/database.models';
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-4 gap-4">
         <div>
           <div class="flex items-center gap-3">
-            <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Ψηφιακά Δελτία Αποστολής (9.1 / 1.2)</h1>
+            <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Ψηφιακά Δελτία Αποστολής (myDATA)</h1>
             <span class="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800 border border-amber-300">
               AADE Phase B
             </span>
@@ -29,7 +29,7 @@ import { LocalInvoiceRecord } from '@core/models/database.models';
           (click)="createNewMovementDoc()"
           class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition"
         >
-          + Νέο Δελτίο Διακίνησης (9.1)
+          + Νέο Δελτίο Διακίνησης
         </button>
       </div>
 
@@ -57,7 +57,7 @@ import { LocalInvoiceRecord } from '@core/models/database.models';
 
         @if (movementDocs().length === 0) {
           <div class="p-12 text-center text-slate-500 space-y-3">
-            <p class="text-sm font-medium">Δεν έχουν καταχωρηθεί παραστατικά διακίνησης (9.1 ή 1.2) ακόμη.</p>
+            <p class="text-sm font-medium">Δεν έχουν καταχωρηθεί παραστατικά διακίνησης (9.3 ή 1.1) ακόμη.</p>
             <button
               type="button"
               (click)="createNewMovementDoc()"
@@ -110,20 +110,32 @@ import { LocalInvoiceRecord } from '@core/models/database.models';
 export class DeliveryNotesComponent implements OnInit {
   private readonly db = inject(LocalDbService);
   private readonly auth = inject(AuthTenantService);
-  public readonly movementDocs = signal<LocalInvoiceRecord[]>([]);;
   private readonly router = inject(Router);
+
+  public readonly movementDocs = signal<LocalInvoiceRecord[]>([]);
 
   async ngOnInit(): Promise<void> {
     const currentTenantId = this.auth.currentTenantId();
-  const all: LocalInvoiceRecord[] = await this.db.getAllInvoices(currentTenantId);
+    const all: LocalInvoiceRecord[] = await this.db.getAllInvoices(currentTenantId);
 
-  // Filter only 1.2 (Invoice with Movement) and 9.1 (Digital Delivery Note)
-  this.movementDocs.set(
-    all.filter((i: LocalInvoiceRecord) => i.invoiceType === '1.2' || i.invoiceType === '9.1')
-  );
-}
+    // Filter only 9.3 or 1.1 with populated movement details
+    this.movementDocs.set(
+      all.filter((i: LocalInvoiceRecord) => {
+        if (i.invoiceType === '9.3') return true;
+        if (i.invoiceType === '1.1') {
+          try {
+            const payload = JSON.parse(i.payloadJson || '{}');
+            return Boolean(payload.movement?.vehicleNumber || payload.movement?.addressTo?.street);
+          } catch {
+            return false;
+          }
+        }
+        return false;
+      })
+    );
+  }
 
   public createNewMovementDoc(): void {
-    this.router.navigate(['/invoices/new']);
+    this.router.navigate(['/invoices/new'], { queryParams: { type: '9.3' } });
   }
 }

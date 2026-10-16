@@ -1,5 +1,5 @@
 export interface LocalInvoiceRecord {
-  id: string; // UUID primary key
+  id?: number | string; // UUID primary key
   tenantId: string;
   series: string;
   documentNumber: number;

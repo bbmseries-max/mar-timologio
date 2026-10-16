@@ -33,3 +33,12 @@ export interface ExternalDocumentHandover {
   transport?: ExternalHandoverTransport;
   items: ExternalReturnItem[];
 }
+
+export interface HandoverAck {
+  messageId: string;
+  status: 'ACCEPTED' | 'REJECTED';
+  importedItemCount: number;
+  correlationId?: string;
+  error?: string;
+  type?: 'MARANTH_HANDOVER_ACK';
+}

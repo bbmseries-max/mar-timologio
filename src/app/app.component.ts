@@ -75,13 +75,20 @@ import { AuthTenantService } from './core/services/auth-tenant.service';
             >
               Αρχείο
             </a>
+            <a
+  routerLink="/invoices/archive"
+  routerLinkActive="bg-indigo-50 text-indigo-700 font-bold border-indigo-200"
+  class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+>
+  📋 Αρχείο Παραστατικών
+</a>
             @if (auth.featureFlags().enableGoodsMovement && auth.canIssueInvoices()) {
               <a
                 routerLink="/delivery-notes"
                 routerLinkActive="bg-blue-50 text-blue-700"
                 class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 transition flex items-center gap-1.5"
               >
-                <span>Διακίνηση (9.1)</span>
+                <span>Δελτία Αποστολής</span>
                 <span class="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold border border-amber-200">Van</span>
               </a>
             }

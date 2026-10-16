@@ -59,17 +59,19 @@ export class AuthTenantService {
     ? new BroadcastChannel('maranth_auth_bus')
     : null;
 
-  // Writable State - Boot with dynamic nulls instead of hardcoded demo mocks
   public readonly currentUser = signal<AuthUser | null>(null);
   public readonly activeTenant = signal<TenantProfile | null>(null);
   public readonly subscription = signal<TenantSubscription | null>(null);
 
-  // Backward compatibility alias
   public readonly currentTenant = this.activeTenant;
 
-  // Computed state helpers
   public readonly isAuthenticated = computed(() => this.currentUser() !== null);
-  public readonly currentTenantId = computed(() => this.activeTenant()?.id ?? '');
+  public readonly currentTenantId = computed(() => this.activeTenant()?.id || 'tenant_minimarket');
+
+  public readonly currentTenantAfm = computed(() => {
+    const tenant = this.activeTenant();
+    return tenant?.fiscalIdentity?.afm || tenant?.afm || '';
+  });
 
   public readonly isGracePeriod = computed(() => {
     return this.subscription()?.status === 'GRACE_PERIOD';
@@ -87,7 +89,8 @@ export class AuthTenantService {
 
   public readonly canIssueInvoices = computed(() => {
     const sub = this.subscription();
-    if (!sub) return false;
+    // In standalone/offline/local mode without an active subscription object, permit issuance
+    if (!sub) return true;
     return sub.status === 'ACTIVE' || sub.status === 'TRIAL' || sub.status === 'GRACE_PERIOD';
   });
 
@@ -104,9 +107,6 @@ export class AuthTenantService {
     this.initCrossTabAuthSync();
   }
 
-  /**
-   * Hydrates state dynamically from browser storage on app start
-   */
   private hydrateSessionFromStorage(): void {
     try {
       const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
@@ -140,9 +140,6 @@ export class AuthTenantService {
     };
   }
 
-  /**
-   * Sets up or updates the dynamic tenant identity (e.g. from Settings or Setup Wizard)
-   */
   public updateTenantProfile(profile: TenantProfile): void {
     this.activeTenant.set(profile);
     if (profile.subscription) {
@@ -155,9 +152,6 @@ export class AuthTenantService {
     }
   }
 
-  /**
-   * Updates only fiscal identity attributes (AFM, DOY, Trade Name) from Settings
-   */
   public updateFiscalIdentity(identity: FiscalIdentity): void {
     const current = this.activeTenant();
     if (!current) return;
@@ -173,9 +167,6 @@ export class AuthTenantService {
     this.updateTenantProfile(updated);
   }
 
-  /**
-   * Dynamic login handler: accepts user and associated tenant identity
-   */
   public async login(
     user: AuthUser,
     tenant: TenantProfile,

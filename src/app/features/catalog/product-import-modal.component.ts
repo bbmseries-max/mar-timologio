@@ -35,29 +35,45 @@ import { ColumnMappingConfig, ImportPreviewItem, ParsedRawRow } from '@core/mode
         <div class="p-6 overflow-y-auto flex-1 space-y-6">
           
           <!-- Step 1: Drag & Drop Zone (if no file loaded) -->
-          @if (!fileLoaded()) {
-            <div
-              (dragover)="onDragOver($event)"
-              (drop)="onFileDrop($event)"
-              class="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-2xl p-10 text-center bg-slate-50/50 hover:bg-blue-50/30 transition cursor-pointer flex flex-col items-center justify-center gap-3"
-              (click)="fileInput.click()"
-            >
-              <input
-                #fileInput
-                type="file"
-                (change)="onFileSelected($event)"
-                accept=".xlsx, .xls, .csv"
-                class="hidden"
-              />
-              <div class="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-2xl font-bold">
-                📄
-              </div>
-              <div class="space-y-1">
-                <p class="text-sm font-bold text-slate-800">Σύρετε το αρχείο εδώ ή κάντε κλικ για επιλογή</p>
-                <p class="text-xs text-slate-500">Μορφές: Excel (.xlsx, .xls) ή CSV οποιουδήποτε προμηθευτή</p>
-              </div>
-            </div>
-          } @else {
+          <!-- Step 1: Drag & Drop Zone -->
+@if (!fileLoaded()) {
+  <div class="space-y-3">
+    <div
+      (dragover)="onDragOver($event)"
+      (drop)="onFileDrop($event)"
+      class="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-2xl p-10 text-center bg-slate-50/50 hover:bg-blue-50/30 transition cursor-pointer flex flex-col items-center justify-center gap-3"
+      (click)="fileInput.click()"
+    >
+      <input
+        #fileInput
+        type="file"
+        (change)="onFileSelected($event)"
+        accept=".xlsx, .xls, .csv"
+        class="hidden"
+      />
+      <div class="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-2xl font-bold">
+        📄
+      </div>
+      <div class="space-y-1">
+        <p class="text-sm font-bold text-slate-800">Σύρετε το αρχείο εδώ ή κάντε κλικ για επιλογή</p>
+        <p class="text-xs text-slate-500">Μορφές: Excel (.xlsx, .xls) ή CSV οποιουδήποτε προμηθευτή</p>
+      </div>
+    </div>
+
+    <!-- Download Sample Template Link -->
+    <div class="flex items-center justify-between px-2 text-xs text-slate-500">
+      <span>Δεν έχετε έτοιμο αρχείο;</span>
+      <button
+        type="button"
+        (click)="downloadSampleCsv()"
+        class="inline-flex items-center gap-1.5 font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+      >
+        <span>📥</span>
+        <span>Λήψη υποδείγματος CSV (.csv)</span>
+      </button>
+    </div>
+  </div>
+} @else {
             
             <!-- Step 2: Visual Column Mapping Form -->
             <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-4 space-y-4">
@@ -277,6 +293,30 @@ export class ProductImportModalComponent {
     if (files && files.length > 0) {
       this.processFile(files[0]);
     }
+  }
+
+  public downloadSampleCsv(): void {
+    // UTF-8 Byte Order Mark (BOM) ensures Excel displays Greek characters correctly
+    const BOM = '\uFEFF';
+    const csvContent =
+      BOM +
+      `Barcode;Περιγραφή;Τιμή;ΦΠΑ\r\n` +
+      `5201234567890;Γάλα Πλήρες 1L;1.45;13\r\n` +
+      `5209876543210;Ελαιόλαδο Εξαιρετικό Παρθένο 1L;9.80;13\r\n` +
+      `5201112223334;Μπισκότα Γεμιστά Σοκολάτα 200g;1.20;24\r\n` +
+      `;Χαρτί Κουζίνας 3φύλλο;2.10;24\r\n` +
+      `5205556667778;Εμφιαλωμένο Νερό 500ml;0.50;13\r\n`;
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'υπόδειγμα_προϊόντων_maranth.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   public onFileSelected(event: Event): void {

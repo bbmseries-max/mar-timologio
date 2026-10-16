@@ -55,6 +55,12 @@ export class LocalDbService extends Dexie {
   settings: 'tenantId', // <-- Dexie now knows the primary key is 'tenantId'!
   customers: 'id, tenantId, afm, legalName, phone, updatedAt',
     });
+    this.version(4).stores({
+  invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, mark, uid, updatedAt, createdAt',
+  products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
+  settings: 'tenantId',
+  customers: 'id, tenantId, afm, legalName, phone, updatedAt',
+});
   }
 
   public async getAllInvoices(tenantId?: string): Promise<LocalInvoiceRecord[]> {
@@ -67,6 +73,48 @@ export class LocalDbService extends Dexie {
     }
     return this.invoices.toCollection().reverse().sortBy('createdAt');
   }
+
+  /**
+   * Retrieves the highest documentNumber used for a given series and tenant,
+   * returning highest + 1. Defaults to 1 if no invoices exist for this series.
+   */
+  public async getNextDocumentNumber(tenantId: string, series: string): Promise<number> {
+    const cleanSeries = (series || '').trim().toUpperCase();
+    if (!cleanSeries || !tenantId) return 1;
+
+    try {
+      const tenantInvoices = await this.invoices
+        .where('tenantId')
+        .equals(tenantId)
+        .toArray();
+
+      // ✅ ONLY count invoices that were actually transmitted with an official MARK!
+      // Un-transmitted local drafts are completely ignored.
+      const transmittedInvoices = tenantInvoices.filter(
+        (inv: any) =>
+          String(inv.series || '').trim().toUpperCase() === cleanSeries &&
+          (inv.transmissionStatus === 'TRANSMITTED' || !!inv.mark)
+      );
+
+      if (transmittedInvoices.length === 0) {
+        return 1;
+      }
+
+      const maxDocNum = transmittedInvoices.reduce((max: number, inv: any) => {
+        const num = Number(inv.documentNumber || inv.aa || 0);
+        return num > max ? num : max;
+      }, 0);
+
+      return maxDocNum + 1;
+    } catch (err) {
+      console.warn('[Dexie] Failed to compute next document number:', err);
+      return 1;
+    }
+  }
+
+  public async updateInvoice(id: string, changes: Partial<LocalInvoiceRecord>): Promise<number> {
+  return await this.invoices.update(id, changes);
+}
 
   // --- Products Catalog ---
 
@@ -91,7 +139,7 @@ export class LocalDbService extends Dexie {
 
   public async saveSettings(record: CompanySettingsRecord): Promise<string> {
     await this.settings.put(record);
-    return record.id;
+    return record.id != null ? String(record.id) : '';
   }
 
   // --- Customers Directory & Local Cache ---
@@ -144,7 +192,7 @@ export class LocalDbService extends Dexie {
 
   public async saveCustomer(record: LocalCustomerRecord): Promise<string> {
     await this.customers.put(record);
-    return record.id;
+    return record.id != null ? String(record.id) : '';
   }
 
   public async bulkSaveCustomers(records: LocalCustomerRecord[]): Promise<void> {
@@ -165,7 +213,7 @@ export class LocalDbService extends Dexie {
 
   public async saveDraft(record: LocalInvoiceRecord): Promise<string> {
     await this.invoices.put(record);
-    return record.id;
+    return record.id != null ? String(record.id) : '';
   }
 
   public async deleteInvoice(id: string): Promise<void> {
