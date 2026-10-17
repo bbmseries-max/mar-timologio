@@ -70,10 +70,26 @@
       <form [formGroup]="invoiceForm" class="space-y-6">
         <!-- Recipient & Document Info -->
        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+  
   <!-- Customer Details Card -->
   <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs md:col-span-2 space-y-4">
     <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-700">Στοιχεία Πελάτη / Λήπτη</h2>
+      <div class="flex items-center gap-2">
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-700">Στοιχεία Πελάτη / Λήπτη</h2>
+
+        <!-- Generate Contract Action Button -->
+        @if (customerAfmValue && isAfmValid) {
+          <button
+            type="button"
+            (click)="openContractModal()"
+            class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md transition cursor-pointer"
+            title="Δημιουργία Ιδιωτικού Συμφωνητικού SaaS"
+          >
+            <span>📄</span>
+            <span>Σύμφωνητικό</span>
+          </button>
+        }
+      </div>
       
       <!-- Status Badge in Header -->
       @if (customerAfmValue) {
@@ -456,4 +472,12 @@
           (imported)="autoSaveStatus.set('Εισήχθησαν ' + $event + ' προϊόντα!')"
         ></maranth-product-import-modal>
       }
+
+      @if (selectedCustomerForContract()) {
+  <maranth-contract-agreement
+    [customer]="selectedCustomerForContract()!"
+    [initialTerms]="{ setupFee: 50, monthlyFee: 29, durationMonths: 12 }"
+    (close)="selectedCustomerForContract.set(null)"
+  ></maranth-contract-agreement>
+}
     </div>

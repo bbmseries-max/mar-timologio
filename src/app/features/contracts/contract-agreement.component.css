@@ -1,0 +1,22 @@
+@media print {
+  /* Hide the rest of the app and modal chrome */
+  body > *:not(#contract-isolated-print-area) {
+    display: none !important;
+  }
+
+  #contract-isolated-print-area {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 15mm 20mm !important;
+    background: #fff !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+}

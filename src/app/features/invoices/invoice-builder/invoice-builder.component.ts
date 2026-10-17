@@ -27,12 +27,13 @@ import {
   GoodsMovementData,
   MovementPurposeCode,
 } from '@core/models/aade.models';
+import { ContractAgreementComponent, ContractCustomerData } from '../../contracts/contract-agreement.component';
 import { calculateLineValues, calculateInvoiceTotals } from '@core/utils/fiscal-engine';
 import { AadeSerializerService } from '@core/services/aade-serializer.service';
 import { LocalInvoiceRecord, Product } from '@core/models/database.models';
 import { InvoicePrintComponent, PrintableInvoiceData } from '../invoice-print/invoice-print.component';
 import { ExternalDocumentHandover } from '@core/models/handover.model';
-//import { buildInvoicesDocXml } from '@core/services/mydata-xml-builder';
+import { CompanySettingsRecord } from '../../../core/models/database.models';
 
 @Component({
   selector: 'maranth-invoice-builder',
@@ -42,6 +43,7 @@ import { ExternalDocumentHandover } from '@core/models/handover.model';
     ReactiveFormsModule,
     InvoicePrintComponent,
     ProductImportModalComponent,
+    ContractAgreementComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: `./invoice-builder.component.html`,
@@ -71,19 +73,18 @@ export class InvoiceBuilderComponent implements OnInit {
   public readonly isSearching = signal<boolean>(false);
 
   private handoverConsumed = false;
-public handoverReceived = false;
+  public handoverReceived = false;
 
   public readonly computedTotals = computed(() =>
     calculateInvoiceTotals(this.lineItemsSignal())
   );
-  
+  public readonly selectedCustomerForContract = signal<ContractCustomerData | null>(null);
 
   public readonly showPrintModal = signal<boolean>(false);
   public readonly printableData = signal<PrintableInvoiceData | null>(null);
 
   public readonly customerSearchQuery = signal<string>('');
   public readonly customerResults = signal<LocalCustomerRecord[]>([]);
-
   public readonly invoiceForm = this.fb.group({
     series: ['', Validators.required],
     documentNumber: [1, [Validators.required, Validators.min(1)]],
@@ -166,6 +167,22 @@ get isAfmInvalid(): boolean {
         this.applyIncomingHandover(handover);
         this.tenantIntegration.clearPending();
       }
+    });
+  }
+
+  public openContractModal(): void {
+    const cust = this.invoiceForm.get('customer')?.value;
+    if (!cust?.afm) return;
+
+    this.selectedCustomerForContract.set({
+      legalName: cust.legalName || '',
+      afm: cust.afm,
+      doy: cust.doy || '',
+      address: cust.street ? `${cust.street} ${cust.postalCode || ''}`.trim() : '',
+      city: cust.city || '',
+      postalCode: cust.postalCode || '',
+      activity: 'Εμπορική Επιχείρηση',
+      representativeName: cust.legalName || '',
     });
   }
 

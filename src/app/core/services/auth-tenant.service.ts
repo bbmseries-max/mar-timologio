@@ -1,13 +1,14 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-
-export type SubscriptionStatus = 'ACTIVE' | 'TRIAL' | 'GRACE_PERIOD' | 'READ_ONLY' | 'SUSPENDED';
+import { SubscriptionTier, SubscriptionStatus } from '../models/tenant.models';
+import { LocalDbService } from './local-db.service';
 
 export interface TenantSubscription {
   status: SubscriptionStatus;
   planName: string;
   validUntil: string;
   daysRemainingInGrace?: number;
+  maxMonthlyDocuments?: number;
 }
 
 export interface FiscalIdentity {
@@ -35,6 +36,7 @@ export interface TenantProfile {
   name: string;
   afm: string;
   doy: string;
+  gemh?: number;
   fiscalIdentity?: FiscalIdentity;
   subscription?: TenantSubscription;
   features?: TenantFeatureFlags;
@@ -55,6 +57,8 @@ const STORAGE_KEYS = {
 @Injectable({ providedIn: 'root' })
 export class AuthTenantService {
   private readonly router = inject(Router);
+  private readonly db = inject(LocalDbService);
+
   private readonly authChannel = typeof BroadcastChannel !== 'undefined'
     ? new BroadcastChannel('maranth_auth_bus')
     : null;
@@ -105,6 +109,66 @@ export class AuthTenantService {
   constructor() {
     this.hydrateSessionFromStorage();
     this.initCrossTabAuthSync();
+  }
+
+  /**
+   * Initializes tenant license on app boot.
+   * Runs non-blockingly so the offline-first app loads instantly even with no internet.
+   */
+  public async syncTenantSubscriptionOnBoot(): Promise<void> {
+    console.info('[Boot Init] 🚀 syncTenantSubscriptionOnBoot triggered via provideAppInitializer');
+
+    const tenantId = this.currentTenantId();
+    if (!tenantId) {
+      console.warn('[Boot Init] ⚠️ No tenant ID resolved. Boot sync aborted.');
+      return;
+    }
+
+    try {
+      let afm = this.currentTenantAfm();
+      const savedSettings = await this.db.getSettingsForTenant(tenantId);
+
+      if (!afm && savedSettings?.afm) {
+        afm = savedSettings.afm;
+      }
+
+      if (!afm) {
+        console.warn('[Boot Init] ⚠️ No AFM found in session or Dexie settings. Skipping remote check.');
+        return;
+      }
+
+      const cleanAfm = afm.replace(/\D/g, '').trim();
+      console.info(`[Boot Init] 🔍 Checking Cloudflare KV subscription for AFM: ${cleanAfm}...`);
+
+      const workerUrl = 'https://gsis-lookup.bbmseries.workers.dev/check-subscription';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      const response = await fetch(`${workerUrl}?afm=${encodeURIComponent(cleanAfm)}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.warn(`[Boot Init] ❌ Cloudflare returned status ${response.status}`);
+        return;
+      }
+
+      const data = await response.json();
+      console.info('[Boot Init] ✅ Subscription synced successfully:', data);
+
+      const updatedSub: TenantSubscription = {
+        status: data.status as SubscriptionStatus,
+        planName: data.tier || 'RETAIL_SHOP',
+        validUntil: data.validUntil || '2099-12-31T23:59:59Z',
+        maxMonthlyDocuments: data.monthlyLimit || 999999,
+      };
+
+      this.subscription.set(updatedSub);
+      console.info('[Boot Init] 📡 Reactive subscription signal updated:', this.subscription());
+    } catch (err) {
+      console.warn('[Boot Init] ⚠️ Subscription sync skipped (offline or unreachable):', err);
+    }
   }
 
   private hydrateSessionFromStorage(): void {

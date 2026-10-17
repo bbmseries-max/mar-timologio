@@ -1,0 +1,151 @@
+<!-- Modal Backdrop -->
+<div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[95vh] flex flex-col overflow-hidden">
+    
+    <!-- Modal Toolbar (Hidden during Print) -->
+    <div class="px-6 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 no-print">
+      
+      <div class="flex items-center gap-2">
+        <span class="text-base">📄</span>
+        <h3 class="text-sm font-bold text-slate-800">Συμφωνητικό SaaS</h3>
+      </div>
+
+      <!-- Quick Fee Adjusters -->
+      <div class="flex items-center gap-3 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+        <div class="flex items-center gap-1.5">
+          <label class="text-[11px] font-semibold text-slate-600">Setup (€):</label>
+          <input
+            type="number"
+            min="0"
+            step="10"
+            [ngModel]="editableTerms().setupFee"
+            (ngModelChange)="updateSetupFee($event)"
+            class="w-16 px-2 py-0.5 text-xs font-mono font-bold border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+          />
+        </div>
+
+        <div class="h-4 w-[1px] bg-slate-200"></div>
+
+        <div class="flex items-center gap-1.5">
+          <label class="text-[11px] font-semibold text-slate-600">Μηνιαίο (€):</label>
+          <input
+            type="number"
+            min="0"
+            step="5"
+            [ngModel]="editableTerms().monthlyFee"
+            (ngModelChange)="updateMonthlyFee($event)"
+            class="w-16 px-2 py-0.5 text-xs font-mono font-bold border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+          />
+        </div>
+
+        <div class="h-4 w-[1px] bg-slate-200"></div>
+
+        <div class="flex items-center gap-1.5">
+          <label class="text-[11px] font-semibold text-slate-600">Μήνες:</label>
+          <input
+            type="number"
+            min="1"
+            max="36"
+            [ngModel]="editableTerms().durationMonths"
+            (ngModelChange)="updateDuration($event)"
+            class="w-14 px-2 py-0.5 text-xs font-mono font-bold border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+          />
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          (click)="printContract()"
+          class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+        >
+          <span>🖨️ Εκτύπωση / Αποθήκευση PDF</span>
+        </button>
+        <button
+          type="button"
+          (click)="close.emit()"
+          class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+
+    <!-- Contract Printable Content Area -->
+    <div class="p-8 overflow-y-auto bg-slate-100 flex justify-center">
+      <div id="contract-printable-area" class="bg-white shadow-md p-10 max-w-[210mm] min-h-[297mm] text-slate-800 text-[12px] leading-relaxed font-sans">
+        
+        <div class="text-center border-b pb-4 mb-6">
+          <h1 class="text-base font-bold uppercase tracking-wider text-slate-900">Ιδιωτικο Συμφωνητικο Παροχης Υπηρεσιων Λογισμικου (SaaS)</h1>
+          <p class="text-[11px] text-slate-500 mt-1">Αριθμός Σύμβασης: MRN-{{ customer.afm }}-{{ editableTerms().startDate }}</p>
+        </div>
+
+        <p class="mb-4">
+          Στην Αθήνα, σήμερα την <strong>{{ editableTerms().startDate }}</strong>, μεταξύ των παρακάτω συμβαλλομένων:
+        </p>
+
+        <!-- Contracting Parties Box -->
+        <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6 text-[11px]">
+          <div>
+            <p class="font-bold text-slate-900 uppercase tracking-wide mb-1">1. Ο Παροχος:</p>
+            <p><strong>{{ provider().legalName }}</strong> (δ.τ. {{ provider().brandName }})</p>
+            <p>Α.Φ.Μ.: <span class="font-mono font-bold">{{ provider().afm }}</span> — Δ.Ο.Υ.: {{ provider().doy }}</p>
+            <p>Αρ. Γ.Ε.Μ.Η.: <span class="font-mono">{{ provider().gemh }}</span></p>
+            <p>Έδρα: {{ provider().address }}, {{ provider().postalCode }} {{ provider().city }}</p>
+            <p>Εκπρόσωπος: {{ provider().representative }}</p>
+          </div>
+          <div>
+            <p class="font-bold text-slate-900 uppercase tracking-wide mb-1">2. Ο Πελατης:</p>
+            <p><strong>{{ customer.legalName }}</strong></p>
+            <p>Α.Φ.Μ.: <span class="font-mono font-bold">{{ customer.afm }}</span> — Δ.Ο.Υ.: {{ customer.doy || '—' }}</p>
+            <p>Δραστηριότητα: {{ customer.activity || 'Εμπορική Επιχείρηση' }}</p>
+            <p>Έδρα: {{ customer.address || '—' }}, {{ customer.postalCode || '' }} {{ customer.city || '' }}</p>
+            <p>Εκπρόσωπος: {{ customer.representativeName || customer.legalName }}</p>
+          </div>
+        </div>
+
+        <!-- Articles -->
+        <div class="space-y-4 text-justify">
+          <section>
+            <h4 class="font-bold text-slate-900">Άρθρο 1: Αντικείμενο Σύμβασης</h4>
+            <p>Ο Πάροχος παραχωρεί στον Πελάτη μη αποκλειστικό δικαίωμα πρόσβασης και χρήσης της πλατφόρμας τιμολόγησης και ταμείου <strong>Maranth Suite</strong>, καθώς και υπηρεσίες διαβίβασης δεδομένων στο myDATA της Α.Α.Δ.Ε.</p>
+          </section>
+
+          <section>
+            <h4 class="font-bold text-slate-900">Άρθρο 2: Οικονομικοί Όροι</h4>
+            <ul class="list-disc pl-5 mt-1 space-y-1">
+              <li>Εφάπαξ κόστος παραμετροποίησης & εκπαίδευσης: <strong>{{ editableTerms().setupFee | currency:'EUR':'symbol':'1.2-2':'el-GR' }}</strong> πλέον Φ.Π.Α.</li>
+              <li>Τακτική συνδρομή χρήσης (SaaS): <strong>{{ editableTerms().monthlyFee | currency:'EUR':'symbol':'1.2-2':'el-GR' }} / μήνα</strong> πλέον Φ.Π.Α., προκαταβαλλόμενη.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h4 class="font-bold text-slate-900">Άρθρο 3: Ευθύνη & Στοιχεία myDATA</h4>
+            <p>Ο Πελάτης φέρει την αποκλειστική φορολογική ευθύνη για την ορθότητα των στοιχείων των εκδιδόμενων παραστατικών και των συντελεστών Φ.Π.Α. Ο Πελάτης παρέχει τα απαραίτητα REST API διαπιστευτήρια myDATA (User ID & Subscription Key).</p>
+          </section>
+
+          <section>
+            <h4 class="font-bold text-slate-900">Άρθρο 4: Διάρκεια</h4>
+            <p>Η παρούσα σύμβαση έχει διάρκεια <strong>{{ editableTerms().durationMonths }} μηνών</strong> αρχόμενη από την υπογραφή της, ανανεούμενη σιωπηρά εκτός έγγραφης καταγγελίας 30 ημέρες προ της λήξης της.</p>
+          </section>
+        </div>
+
+        <!-- Signatures Box -->
+        <div class="mt-14 pt-6 border-t border-slate-300 grid grid-cols-2 gap-12 text-center">
+          <div>
+            <p class="font-bold text-slate-900 uppercase">Για τον Παροχο</p>
+            <p class="text-[10px] text-slate-400 mt-1 mb-16">(Σφραγίδα & Υπογραφή)</p>
+            <p class="font-semibold">{{ provider().representative }}</p>
+          </div>
+          <div>
+            <p class="font-bold text-slate-900 uppercase">Για τον Πελατη</p>
+            <p class="text-[10px] text-slate-400 mt-1 mb-16">(Σφραγίδα & Υπογραφή)</p>
+            <p class="font-semibold">{{ customer.representativeName || customer.legalName }}</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
