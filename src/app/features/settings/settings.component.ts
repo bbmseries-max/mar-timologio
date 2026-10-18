@@ -1,11 +1,10 @@
 import { Component, ChangeDetectionStrategy, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { greekAfmValidator } from '../../core/validators/afm.validator';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule, Validators, FormControl } from '@angular/forms';
 import { LocalDbService } from '@core/services/local-db.service';
 import { AuthTenantService } from '@core/services/auth-tenant.service';
 import { SubscriptionTier, SubscriptionStatus } from '@core/models/tenant.models';
-import { FormControl } from '@angular/forms';
 
 @Component({
   selector: 'maranth-settings',
@@ -20,11 +19,7 @@ import { FormControl } from '@angular/forms';
           <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Ρυθμίσεις Καταστήματος & myDATA</h1>
           <p class="text-xs text-slate-500 mt-1">Φορολογική ταυτότητα, συνδρομή και διαπιστευτήρια AADE API</p>
         </div>
-        @if (savedNotification()) {
-          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span>✓</span> {{ savedNotification() }}
-          </span>
-        }
+        
       </div>
 
       <form [formGroup]="form" (ngSubmit)="onSave()" class="space-y-6">
@@ -70,15 +65,15 @@ import { FormControl } from '@angular/forms';
                   }
                 </div>
                 <p class="text-[11px] text-slate-500 mt-1">
-  @if (!form.get('validUntil')?.value || form.get('validUntil')?.value?.startsWith('2099')) {
-    <span class="inline-flex items-center font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-      ★ ΑΠΕΡΙΟΡΙΣΤΗ (LIFETIME)
-    </span>
-  } @else {
-    <span>Ισχύει έως: <strong class="text-slate-700">{{ form.get('validUntil')?.value | date:'dd/MM/yyyy' }}</strong></span>
-  }
-  &bull; Έγγραφα Μήνα: <span class="font-mono font-bold text-slate-800">{{ form.get('currentMonthDocumentCount')?.value || 0 }}</span> / {{ form.get('maxMonthlyDocuments')?.value || '∞' }}
-</p>
+                  @if (!form.get('validUntil')?.value || form.get('validUntil')?.value?.startsWith('2099') || form.get('validUntil')?.value?.startsWith('2999')) {
+                    <span class="inline-flex items-center font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                      ★ ΑΠΕΡΙΟΡΙΣΤΗ (LIFETIME)
+                    </span>
+                  } @else {
+                    <span>Ισχύει έως: <strong class="text-slate-700">{{ form.get('validUntil')?.value | date:'dd/MM/yyyy' }}</strong></span>
+                  }
+                  &bull; Έγγραφα Μήνα: <span class="font-mono font-bold text-slate-800">{{ form.get('currentMonthDocumentCount')?.value || 0 }}</span> / {{ form.get('maxMonthlyDocuments')?.value || '∞' }}
+                </p>
               </div>
             </div>
             <div class="text-right">
@@ -150,7 +145,7 @@ import { FormControl } from '@angular/forms';
                 <span>🔑</span>
                 <span>AADE myDATA REST API Friendly Credentials</span>
               </h2>
-              <p class="text-[11px] text-slate-400 mt-0.5">Κωδικοί διεπαφής από την ιστοσελίδα της ΑΑΔΕ</p>
+              <p class="text-[11px] text-slate-400 mt-0.5">Κωδικοί διεπαφής από την ιστοσελίδα της ΑΑΔΕ (myDATA)</p>
             </div>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
@@ -171,8 +166,36 @@ import { FormControl } from '@angular/forms';
           </div>
         </div>
 
+        <!-- Section 4: GSIS Registry Credentials (Ειδικοί Κωδικοί) -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <span>🏛️</span>
+                <span>GSIS Taxisnet Ειδικοί Κωδικοί (RgWsPublic2)</span>
+              </h2>
+              <p class="text-[11px] text-slate-400 mt-0.5">Απαραίτητοι για την αυτόματη ανάκτηση επωνυμίας & στοιχείων πελατών/προμηθευτών βάσει ΑΦΜ</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Όνομα Χρήστη (GSIS Username)</label>
+              <input type="text" formControlName="gsisUsername" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="π.χ. MARANTH-APP2026" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Κωδικός Πρόσβασης (GSIS Password)</label>
+              <input type="password" formControlName="gsisPassword" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="••••••••" />
+            </div>
+          </div>
+        </div>
+
         <!-- Submit Button -->
         <div class="flex justify-end gap-3 pt-2">
+          @if (savedNotification()) {
+          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span>✓</span> {{ savedNotification() }}
+          </span>
+        }
           <button
             type="submit"
             [disabled]="form.invalid || isSaving()"
@@ -181,8 +204,10 @@ import { FormControl } from '@angular/forms';
             <span>💾</span>
             <span>{{ isSaving() ? 'Αποθήκευση...' : 'Αποθήκευση Ρυθμίσεων' }}</span>
           </button>
+          
         </div>
       </form>
+      
     </div>
   `
 })
@@ -207,6 +232,9 @@ export class SettingsComponent implements OnInit {
     aadeUserId: [''],
     aadeSubscriptionKey: [''],
     isProduction: [false],
+    // GSIS Specific Credentials
+    gsisUsername: [''],
+    gsisPassword: [''],
     // Subscription Controls
     subscriptionTier: ['RETAIL_SHOP' as SubscriptionTier],
     subscriptionStatus: ['ACTIVE' as SubscriptionStatus],
@@ -234,6 +262,8 @@ export class SettingsComponent implements OnInit {
         aadeUserId: saved.aadeUserId ?? '',
         aadeSubscriptionKey: saved.aadeSubscriptionKey ?? '',
         isProduction: !!saved.isProduction,
+        gsisUsername: (saved as any).gsisUsername ?? '',
+        gsisPassword: (saved as any).gsisPassword ?? '',
         subscriptionTier: (saved as any).subscriptionTier ?? 'RETAIL_SHOP',
         subscriptionStatus: (saved as any).subscriptionStatus ?? 'ACTIVE',
         validUntil: (saved as any).validUntil ?? null,
@@ -251,6 +281,11 @@ export class SettingsComponent implements OnInit {
       alert('Σφάλμα: Δεν βρέθηκε ενεργός οργανισμός (Tenant).');
       return;
     }
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      alert('Παρακαλώ διορθώστε τα κόκκινα πεδία στη φόρμα πριν την αποθήκευση.');
+      return;
+    }
 
     this.isSaving.set(true);
     try {
@@ -266,10 +301,12 @@ export class SettingsComponent implements OnInit {
         postalCode: val.postalCode!,
         city: val.city!,
         branch: Number(val.branch ?? 0),
-        defaultSeries: val.defaultSeries || 'ΕΠΙΣΤΡ',
+        defaultSeries: val.defaultSeries || 'A',
         aadeUserId: val.aadeUserId || '',
         aadeSubscriptionKey: val.aadeSubscriptionKey || '',
         isProduction: !!val.isProduction,
+        gsisUsername: val.gsisUsername || '',
+        gsisPassword: val.gsisPassword || '',
         subscriptionTier: val.subscriptionTier,
         subscriptionStatus: val.subscriptionStatus,
         validUntil: val.validUntil,

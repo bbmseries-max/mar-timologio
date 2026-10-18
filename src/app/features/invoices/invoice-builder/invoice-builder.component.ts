@@ -725,7 +725,7 @@ get isMovementDocument(): boolean {
 
   public async triggerGsisLookup(): Promise<void> {
     const afmControl = this.invoiceForm.get('customer.afm');
-    let rawAfm = String(afmControl?.value ?? '').replace(/\D/g, '');
+    let rawAfm = String(afmControl?.value ?? '').replace(/\D/g, '').trim();
 
     if (rawAfm.length === 8) {
       rawAfm = '0' + rawAfm;
@@ -740,28 +740,29 @@ get isMovementDocument(): boolean {
 
     const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
     const shopSettings = await this.db.getSettingsForTenant(tenantId);
-if (shopSettings?.afm && rawAfm === shopSettings.afm.replace(/\D/g, '')) {
-  // It's your own company AFM, not a customer
-  alert('Το Α.Φ.Μ. αυτό ανήκει στο κατάστημά σας (Εκδότης), όχι σε πελάτη/παραλήπτη.');
-  return;
-}
+    
+    if (shopSettings?.afm && rawAfm === String(shopSettings.afm).replace(/\D/g, '').trim()) {
+      alert('Το Α.Φ.Μ. αυτό ανήκει στο κατάστημά σας (Εκδότης), όχι σε πελάτη/παραλήπτη.');
+      return;
+    }
 
+    // 1. Cache Check: Only accept cached record if legalName is present and non-empty
     try {
       const cachedCustomer = await this.db.getCustomerByAfm(tenantId, rawAfm);
-if (cachedCustomer) {
-  this.populateCustomerForm({
-    legalName: cachedCustomer.legalName,
-    doy: cachedCustomer.doy,
-    address: {
-      street: cachedCustomer.address?.street || (cachedCustomer as any).street || '',
-      number: cachedCustomer.address?.number || (cachedCustomer as any).number || '',
-      postalCode: cachedCustomer.address?.postalCode || (cachedCustomer as any).postalCode || '',
-      city: cachedCustomer.address?.city || (cachedCustomer as any).city || '',
-    }
-  });
-  this.gsisError.set(null);
-  return;
-}
+      if (cachedCustomer && cachedCustomer.legalName?.trim()) {
+        this.populateCustomerForm({
+          legalName: cachedCustomer.legalName,
+          doy: cachedCustomer.doy || '',
+          address: {
+            street: cachedCustomer.address?.street || (cachedCustomer as any).street || '',
+            number: cachedCustomer.address?.number || (cachedCustomer as any).number || '',
+            postalCode: cachedCustomer.address?.postalCode || (cachedCustomer as any).postalCode || '',
+            city: cachedCustomer.address?.city || (cachedCustomer as any).city || '',
+          }
+        });
+        this.gsisError.set(null);
+        return;
+      }
     } catch (e) {
       console.warn('[GSIS] Local cache check failed:', e);
     }
@@ -769,32 +770,49 @@ if (cachedCustomer) {
     this.gsisLoading.set(true);
     this.gsisError.set(null);
 
+    // 2. Network Dispatch via GsisService
     this.gsisService.lookupAfm(rawAfm).subscribe({
-      next: async (data) => {
+      next: async (res: any) => {
         this.gsisLoading.set(false);
+        console.log('[GSIS Lookup Raw Response]:', res);
 
-        if (!data || !data.legalName) {
-          this.gsisError.set('Το Α.Φ.Μ. είναι έγκυρο αλλά δεν βρέθηκαν στοιχεία στο μητρώο.');
+        // Normalize payload in case of nested data wrappers
+        const payload = res?.data || res;
+
+        // Check for explicit failure returned from worker or GSIS
+        if (!payload || payload.success === false) {
+          console.error('[GSIS Proxy Error Details]:', payload);
+          const errDetail = payload?.errorCode ? `[${payload.errorCode}] ` : '';
+          this.gsisError.set(`${errDetail}${payload?.error || 'Σφάλμα ανάκτησης στοιχείων από το GSIS.'}`);
           return;
         }
 
-        if (data.active === false) {
+        // Resolve legal entity name across multiple possible tag aliases
+        const legalName = (payload.legalName || payload.onomasia || payload.name || '').trim();
+
+        if (!legalName) {
+          this.gsisError.set(payload.error || 'Το Α.Φ.Μ. είναι έγκυρο αλλά δεν βρέθηκαν στοιχεία στο μητρώο.');
+          return;
+        }
+
+        if (payload.active === false) {
           alert('Προσοχή: Η επιχείρηση με αυτό το Α.Φ.Μ. εμφανίζεται ως ΑΝΕΝΕΡΓΗ / ΔΙΑΚΟΠΕΙΣΑ στο μητρώο!');
         }
 
         const customerPayload = {
-          legalName: data.legalName,
-          doy: data.doyDescr || '',
+          legalName,
+          doy: payload.doy || payload.doyDescr || payload.doy_descr || '',
           address: {
-            street: data.postalAddress || '',
-            number: data.postalAddressNo || '',
-            postalCode: data.postalZipCode || '',
-            city: data.postalAreaDescription || '',
+            street: payload.street || payload.postalAddress || payload.postal_address || '',
+            number: payload.number || payload.postalAddressNo || payload.postal_address_no || '',
+            postalCode: payload.postalCode || payload.postalZipCode || payload.postal_zip_code || '',
+            city: payload.city || payload.postalAreaDescription || payload.postal_area_description || '',
           }
         };
 
         this.populateCustomerForm(customerPayload);
 
+        // Save valid customer into local Dexie cache
         try {
           const existing = await this.db.getCustomerByAfm(tenantId, rawAfm);
           await this.db.saveCustomer({
@@ -813,13 +831,11 @@ if (cachedCustomer) {
           console.error('[GSIS] Failed to cache customer in Dexie:', dbErr);
         }
       },
-      error: (err) => {
+      error: (err: any) => {
         this.gsisLoading.set(false);
-        this.gsisError.set(
-          err.status === 0 || err.message?.includes('Http failure')
-            ? 'Αδυναμία σύνδεσης με την υπηρεσία μητρώου (GSIS). Συμπληρώστε τα στοιχεία χειροκίνητα.'
-            : (err.message || 'Αποτυχία ανάκτησης στοιχείων.')
-        );
+        console.error('[GSIS HTTP Failure]:', err);
+        const errMsg = err?.error?.error || err?.message || 'Αδυναμία σύνδεσης με την υπηρεσία μητρώου (GSIS).';
+        this.gsisError.set(errMsg);
       },
     });
   }
@@ -851,7 +867,10 @@ if (cachedCustomer) {
   }
 
   public async onOpenPreview(): Promise<void> {
-    if (this.invoiceForm.invalid) return;
+    if (this.invoiceForm.invalid) {
+      this.invoiceForm.markAllAsTouched();
+      return;
+    }
 
     const tenantId = this.auth.currentTenantId();
     if (!tenantId) {
@@ -862,32 +881,42 @@ if (cachedCustomer) {
     const mySettings = await this.db.getSettingsForTenant(tenantId);
     const s = (mySettings || {}) as any;
 
-    const issuerAfm = s.afm || this.auth.activeTenant()?.fiscalIdentity?.afm;
+    const rawIssuerAfm = s.afm || this.auth.activeTenant()?.fiscalIdentity?.afm || '';
+    const issuerAfm = String(rawIssuerAfm).replace(/\D/g, '').trim();
 
     if (!issuerAfm || !isValidGreekAfm(issuerAfm)) {
       alert('Απαιτείται καταχώρηση στοιχείων επιχείρησης! Παρακαλώ μεταβείτε στις Ρυθμίσεις και συμπληρώστε το Α.Φ.Μ. και τα στοιχεία του καταστήματος.');
       return;
     }
 
+    // 1. Force recalculation of reactive line items before reading totals
+    this.syncLines();
+
     const formVal = this.invoiceForm.getRawValue();
     const totals = this.computedTotals();
+    const isDispatch = formVal.invoiceType === '9.1' || formVal.invoiceType === '9.3';
 
+    // 2. Demo simulation fallback values
     const demoMark = '40000' + Math.floor(1000000000 + Math.random() * 9000000000);
     const demoUid = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('')
       .toUpperCase();
 
-    const officialQrUrl = `https://www.aade.gr/mydata/verify?afm=${issuerAfm}&d=${formVal.issueDate}&mark=${demoMark}&g=${totals.totalGrossValue.toFixed(2)}`;
+    const officialQrUrl = s.isProduction
+      ? `https://mydatapi.aade.gr/myDATA/qrUrl?mark=${demoMark}`
+      : `https://mydataapidev.aade.gr/qrUrl?mark=${demoMark}`;
 
+    // 3. Counterpart Data Normalization
+    const rawCustomerAfm = String(formVal.customer?.afm || '').replace(/\D/g, '').trim();
     const customerData = {
       id: crypto.randomUUID(),
-      afm: formVal.customer.afm!,
+      afm: rawCustomerAfm,
       branch: 0,
-      legalName: formVal.customer.legalName!,
-      doy: formVal.customer.doy || '',
+      legalName: formVal.customer?.legalName || 'ΙΔΙΩΤΗΣ / ΠΕΛΑΤΗΣ',
+      doy: formVal.customer?.doy || '',
       country: 'GR',
-      email: formVal.customer.email || '',
+      email: formVal.customer?.email || '',
       address: {
         street: formVal.movement?.addressTo?.street || formVal.customer?.street || '',
         number: formVal.movement?.addressTo?.number || formVal.customer?.number || '',
@@ -896,43 +925,43 @@ if (cachedCustomer) {
       },
     };
 
-    const isMovementOnly = formVal.invoiceType === '9.1';
-
+    // 4. Movement metadata (only populated for physical movement documents)
     const movementData: GoodsMovementData | undefined = this.isMovementDocument
       ? {
           vehicleNumber: formVal.movement?.vehicleNumber || '',
-          movePurpose: (Number(formVal.movement?.movePurpose) || 6) as MovementPurposeCode,
+          movePurpose: (Number(formVal.movement?.movePurpose) || 1) as MovementPurposeCode,
           dispatchDateTime: formVal.movement?.dispatchDateTime || new Date().toISOString().substring(0, 16),
           addressFrom: {
-            street: formVal.movement?.addressFrom?.street || s.street || s.address?.street || '',
-            number: formVal.movement?.addressFrom?.number || s.number || s.address?.number || '',
-            postalCode: formVal.movement?.addressFrom?.postalCode || s.postalCode || s.address?.postalCode || '',
-            city: formVal.movement?.addressFrom?.city || s.city || s.address?.city || '',
+            street: formVal.movement?.addressFrom?.street || s.street || '',
+            number: formVal.movement?.addressFrom?.number || s.number || '',
+            postalCode: formVal.movement?.addressFrom?.postalCode || s.postalCode || '',
+            city: formVal.movement?.addressFrom?.city || s.city || '',
           },
           addressTo: {
-            street: formVal.movement?.addressTo?.street || '',
-            number: formVal.movement?.addressTo?.number || '',
-            postalCode: formVal.movement?.addressTo?.postalCode || '',
-            city: formVal.movement?.addressTo?.city || '',
+            street: formVal.movement?.addressTo?.street || customerData.address.street || '',
+            number: formVal.movement?.addressTo?.number || customerData.address.number || '',
+            postalCode: formVal.movement?.addressTo?.postalCode || customerData.address.postalCode || '',
+            city: formVal.movement?.addressTo?.city || customerData.address.city || '',
           },
         }
       : undefined;
 
+    // 5. XML Serialization payload
     const xmlPayload = this.serializer.generateInvoicesDocXml({
       series: formVal.series!,
       documentNumber: Number(formVal.documentNumber),
       issueDate: formVal.issueDate!,
       invoiceType: formVal.invoiceType!,
       currency: 'EUR',
-      issuer: { 
-        afm: issuerAfm, 
-        country: 'GR', 
-        branch: Number(s.branch ?? 0) 
+      issuer: {
+        afm: issuerAfm,
+        country: 'GR',
+        branch: Number(s.branch ?? 0),
       },
       counterpart: customerData,
       lines: this.lineItemsSignal(),
       totals,
-      paymentMethodType: isMovementOnly ? undefined : 1,
+      paymentMethodType: isDispatch ? undefined : 1,
       movement: movementData,
     });
 
@@ -943,17 +972,16 @@ if (cachedCustomer) {
       doy: s.doy || '',
       branch: Number(s.branch ?? 0),
       address: {
-        street: s.street || s.address?.street || '',
-        number: s.number || s.address?.number || '',
-        postalCode: s.postalCode || s.address?.postalCode || '',
-        city: s.city || s.address?.city || '',
+        street: s.street || '',
+        number: s.number || '',
+        postalCode: s.postalCode || '',
+        city: s.city || '',
       },
       phone: s.phone || '',
       email: s.email || '',
     };
 
-
-
+    // 6. Push to Print/Preview modal signal
     this.printableData.set({
       series: formVal.series!,
       documentNumber: Number(formVal.documentNumber),
@@ -982,7 +1010,7 @@ if (cachedCustomer) {
 
       invoice.mark = result.mark;
       invoice.uid = result.uid;
-      invoice.qrUrl = result.qrUrl ?? invoice.qrUrl ?? '';
+      invoice.qrUrl = result.qrUrl ?? (invoice.mark ? `https://mydatapi.aade.gr/myDATA/qrUrl?mark=${invoice.mark}` : '');
       invoice.transmissionStatus = 'TRANSMITTED';
       invoice.updatedAt = Date.now();
 
@@ -998,21 +1026,21 @@ if (cachedCustomer) {
         this.autoSaveStatus.set(`Εκδόθηκε με επιτυχία! ΜΑΡΚ: ${result.mark}`);
       }
 
-      // 1. Trigger Print Modal with the verified MARK & QR URL
-      await this.onOpenPreview();
+      // 1. Open verified print preview with actual AADE MARK & QR
+      await this.openVerifiedPreview(invoice, result.mark, result.uid, invoice.qrUrl);
 
-      // 2. Clear customer & line items for the next document
-      this.linesArray.clear();
-      this.seedInitialLine();
-      this.invoiceForm.get('customer')?.reset();
-
-      // 3. Prepare counter & new draft ID for the NEXT invoice
+      // 2. Prepare next sequential document number and fresh draft ID
       const tenantId = this.auth.currentTenantId();
       if (tenantId) {
         const nextAa = await this.db.getNextDocumentNumber(tenantId, invoice.series);
         this.currentDraftId.set(crypto.randomUUID());
         this.invoiceForm.get('documentNumber')?.setValue(nextAa, { emitEvent: false });
       }
+
+      // 3. Clear lines & customer cleanly for the next customer
+      this.linesArray.clear();
+      this.seedInitialLine();
+      this.invoiceForm.get('customer')?.reset();
     } else {
       console.warn('myDATA Transmission rejected:', result.error);
       const invoiceId = invoice.id != null ? String(invoice.id) : null;
@@ -1031,64 +1059,146 @@ if (cachedCustomer) {
 }
 
   private syncLines(): void {
-    const isDeltio = this.invoiceForm.get('invoiceType')?.value === '9.1';
+  const docType = String(this.invoiceForm.get('invoiceType')?.value || '').trim();
+  const isDeltio = docType === '9.1' || docType === '9.3';
+  const isServices = docType === '2.1';
 
-    if (isDeltio) {
-      for (let i = 0; i < this.linesArray.length; i++) {
-        const row = this.linesArray.at(i);
-        row.get('unitPrice')?.setValue(0, { emitEvent: false });
-        row.get('discountPercentage')?.setValue(0, { emitEvent: false });
-        row.get('netValue')?.setValue(0, { emitEvent: false });
-        row.get('vatAmount')?.setValue(0, { emitEvent: false });
-        row.get('totalValue')?.setValue(0, { emitEvent: false });
-      }
+  if (isDeltio) {
+    for (let i = 0; i < this.linesArray.length; i++) {
+      const row = this.linesArray.at(i);
+      row.get('unitPrice')?.setValue(0, { emitEvent: false });
+      row.get('discountPercentage')?.setValue(0, { emitEvent: false });
+      row.get('netValue')?.setValue(0, { emitEvent: false });
+      row.get('vatAmount')?.setValue(0, { emitEvent: false });
+      row.get('totalValue')?.setValue(0, { emitEvent: false });
+    }
+  }
+
+  const raw = this.linesArray.getRawValue() as any[];
+  const items: InvoiceLineItem[] = raw.map((r, i) => {
+    const qty = Number(r.quantity) || 1;
+    let unitPr = isDeltio ? 0 : Number(r.unitPrice) || 0;
+
+    let netVal = 0;
+    if (!isDeltio) {
+      netVal = Number(r.netValue) > 0 ? Number(r.netValue) : Number((qty * unitPr).toFixed(2));
     }
 
-    const raw = this.linesArray.getRawValue() as any[];
-    const items: InvoiceLineItem[] = raw.map((r, i) => {
-      const qty = Number(r.quantity) || 1;
-      let unitPr = isDeltio ? 0 : Number(r.unitPrice) || 0;
+    const vatCat = (Number(r.vatRateCategory) || 1) as VatRateCategory;
+    let vatPct = 24;
+    if (vatCat === 2) vatPct = 13;
+    else if (vatCat === 3) vatPct = 6;
+    else if (vatCat === 7 || vatCat === 8) vatPct = 0;
 
-      // Compute net value properly if not deltio
-      let netVal = 0;
-      if (!isDeltio) {
-        netVal = Number(r.netValue) > 0 ? Number(r.netValue) : Number((qty * unitPr).toFixed(2));
-      }
+    const vatAmt = isDeltio ? 0 : Number(((netVal * vatPct) / 100).toFixed(2));
+    const totVal = isDeltio ? 0 : Number((netVal + vatAmt).toFixed(2));
 
-      const vatCat = (Number(r.vatRateCategory) || 1) as VatRateCategory;
-      let vatPct = 24;
-      if (vatCat === 2) vatPct = 13;
-      else if (vatCat === 3) vatPct = 6;
-      else if (vatCat === 7) vatPct = 0;
+    // Services (2.1) require category1_3; Commercial Goods (1.1) require category1_1
+    const defaultClassificationCategory = isServices ? 'category1_3' : 'category1_1';
 
-      const vatAmt = isDeltio ? 0 : Number(((netVal * vatPct) / 100).toFixed(2));
-      const totVal = isDeltio ? 0 : Number((netVal + vatAmt).toFixed(2));
+    return {
+      id: String(i + 1),
+      lineNumber: i + 1,
+      description: r.description || '',
+      quantity: qty,
+      unitPrice: unitPr,
+      discountPercentage: Number(r.discountPercentage) || 0,
+      netValue: netVal,
+      vatRateCategory: vatCat,
+      vatPercentage: vatPct,
+      vatAmount: vatAmt,
+      totalValue: totVal,
+      unitMeasurement: '1',
+      incomeClassification: isDeltio
+        ? undefined
+        : {
+            classificationType: r.incomeClassification?.classificationType || 'E3_561_001',
+            classificationCategory: r.incomeClassification?.classificationCategory || defaultClassificationCategory,
+            amount: netVal,
+          },
+    };
+  });
 
-      return {
-        id: String(i + 1),
-        lineNumber: i + 1,
-        description: r.description || '',
-        quantity: qty,
-        unitPrice: unitPr,
-        discountPercentage: 0,
-        netValue: netVal,
-        vatRateCategory: vatCat,
-        vatPercentage: vatPct,
-        vatAmount: vatAmt,
-        totalValue: totVal,
-        unitMeasurement: '1',
-        incomeClassification: isDeltio
-          ? undefined
-          : {
-              classificationType: 'E3_561_001',
-              classificationCategory: 'category1_1',
-              amount: netVal,
-            },
-      };
-    });
+  this.lineItemsSignal.set(items);
+}
 
-    this.lineItemsSignal.set(items);
+private async openVerifiedPreview(
+  invoice: LocalInvoiceRecord,
+  mark: string,
+  uid?: string,
+  qrUrl?: string
+): Promise<void> {
+  const tenantId = this.auth.currentTenantId();
+  const settings = tenantId ? await this.db.getSettingsForTenant(tenantId) : null;
+  const s = (settings || {}) as any;
+
+  let parsedPayload: any = {};
+  try {
+    parsedPayload = typeof invoice.payloadJson === 'string' 
+      ? JSON.parse(invoice.payloadJson) 
+      : (invoice.payloadJson || {});
+  } catch {
+    parsedPayload = {};
   }
+
+  const rawIssuerAfm = s.afm || this.auth.activeTenant()?.fiscalIdentity?.afm || '';
+  const issuerAfm = String(rawIssuerAfm).replace(/\D/g, '').trim();
+
+  const customerData = {
+    id: parsedPayload.customer?.id || crypto.randomUUID(),
+    afm: invoice.customerAfm || '',
+    branch: 0,
+    legalName: invoice.customerName || 'ΙΔΙΩΤΗΣ / ΠΕΛΑΤΗΣ',
+    doy: parsedPayload.customer?.doy || '',
+    country: 'GR',
+    email: parsedPayload.customer?.email || '',
+    address: {
+      street: parsedPayload.customer?.street || '',
+      number: parsedPayload.customer?.number || '',
+      postalCode: parsedPayload.customer?.postalCode || '',
+      city: parsedPayload.customer?.city || '',
+    },
+  };
+
+  const issuerData = {
+    legalName: s.legalName || this.auth.activeTenant()?.name || 'Επωνυμία Επιχείρησης',
+    tradeName: s.tradeName || s.commercialTitle || '',
+    afm: issuerAfm,
+    doy: s.doy || '',
+    branch: Number(s.branch ?? 0),
+    address: {
+      street: s.street || '',
+      number: s.number || '',
+      postalCode: s.postalCode || '',
+      city: s.city || '',
+    },
+    phone: s.phone || '',
+    email: s.email || '',
+  };
+
+  this.printableData.set({
+    series: invoice.series,
+    documentNumber: Number(invoice.documentNumber),
+    issueDate: invoice.issueDate,
+    invoiceType: invoice.invoiceType,
+    issuer: issuerData,
+    customer: customerData,
+    lines: this.lineItemsSignal(),
+    totals: {
+      totalNetValue: invoice.totalNet,
+      totalVatAmount: invoice.totalVat,
+      totalGrossValue: invoice.totalGross,
+      vatBreakdowns: [],
+    },
+    mark: mark,
+    uid: uid || '',
+    qrUrl: qrUrl || `https://mydatapi.aade.gr/myDATA/qrUrl?mark=${mark}`,
+    xmlPayload: undefined,
+    movement: parsedPayload.movement,
+  });
+
+  this.showPrintModal.set(true);
+}
 
   public async onSaveAndSubmit(): Promise<void> {
     if (this.invoiceForm.invalid) {

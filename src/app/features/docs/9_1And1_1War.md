@@ -26,3 +26,21 @@
 ### Issue C: Client-Side "✕ Μη έγκυρο Α.Φ.Μ."
 - **Root Cause:** Frontend Modulo 11 checksum validator failure on specific valid AFM numbers (likely string padding or leading zeros handling).
 - **Action:** Review the AFM validator regex and Modulo 11 check algorithm.
+Fetch AFM from GSIS db
+WAF / Reverse Proxy Behavior:
+
+www1.gsis.gr/webtax/... routes through an Oracle Access Manager (OAM) SSO portal, triggering an F5 BIG-IP anti-bot challenge (f5_cspm) and issuing a 302 redirect to /oam/server/auth_cred_submit.
+
+www1.gsis.gr/webtax2/... paths return pure WebLogic HTTP 404 errors, indicating the servlet context path is either blocked or mapped to an alternate URI.
+
+Direct domain services.gsis.gr fails public DNS resolution (error code: 1016 on Cloudflare).
+
+Requirements Verified:
+
+Credentials (MARANTH-APP2026) are valid and authorized under service RgWsPublic2.
+
+Request payload requires strict WS-Security <wsse:UsernameToken> headers.
+
+afm_called_by must strictly be the 9 numeric digits (067424104), omitting any leading A.
+
+XML elements inside <rg:INPUT_REC> must remain unqualified (no namespace prefixes).

@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   InvoiceLineItem,
   GoodsMovementData,
@@ -6,6 +6,8 @@ import {
   InvoiceDocument,
   Customer,
 } from '../models/aade.models';
+import { LocalDbService } from './local-db.service';
+import { CompanySettingsRecord } from '@core/models/database.models';
 
 export interface CompanyIssuerInfo {
   afm: string;
@@ -29,7 +31,16 @@ export interface InvoiceDocPayload {
 
 @Injectable({ providedIn: 'root' })
 export class AadeSerializerService {
-  public serializeToXml(invoice: InvoiceDocument | any, issuerAfm: string): string {
+  private readonly db = inject(LocalDbService);
+
+  /**
+   * Main entry point: preserves signature while accepting dynamic issuer settings
+   */
+  public serializeToXml(
+    invoice: InvoiceDocument | any,
+    issuerAfm: string,
+    issuerSettings?: Partial<CompanySettingsRecord>
+  ): string {
     return this.generateInvoicesDocXml({
       series: invoice.series,
       documentNumber: invoice.documentNumber,
@@ -37,9 +48,9 @@ export class AadeSerializerService {
       invoiceType: invoice.invoiceType || invoice.documentType || '1.1',
       currency: invoice.currency || 'EUR',
       issuer: {
-        afm: issuerAfm,
+        afm: (issuerAfm || issuerSettings?.afm || '').replace(/\D/g, '').trim(),
         country: 'GR',
-        branch: 0,
+        branch: Number(issuerSettings?.branch ?? 0),
       },
       counterpart: invoice.customer,
       lines: invoice.lines,
@@ -49,9 +60,13 @@ export class AadeSerializerService {
     });
   }
 
+  /**
+   * Generates strict, XSD-compliant InvoicesDoc XML for AADE myDATA
+   */
   public generateInvoicesDocXml(data: InvoiceDocPayload): string {
     const isMovementOnly = data.invoiceType === '9.1';
     const isMovementDoc = data.invoiceType === '1.2' || data.invoiceType === '9.1';
+    const isServiceInvoice = data.invoiceType === '2.1';
 
     // 1. Counterpart Address (Only emit if street/city/postal are non-empty)
     const street = this.escapeXml(data.counterpart?.address?.street?.trim() || '');
@@ -68,11 +83,7 @@ export class AadeSerializerService {
       </address>`
       : '';
 
-    // 2. Safe Move Purpose (Avoid 6 without correlations)
-    const rawPurpose = Number(data.movement?.movePurpose);
-    const safePurpose = (rawPurpose && rawPurpose !== 6) ? rawPurpose : 1;
-
-    // 3. Line Items (Adhering to strict AADE XSD sequence)
+    // 2. Line Items (Adhering to strict AADE XSD sequence)
     const linesXml = (data.lines || [])
       .map((line, idx) => {
         const lineNum = line.lineNumber || idx + 1;
@@ -85,20 +96,22 @@ export class AadeSerializerService {
           : '';
 
         if (isMovementOnly) {
-  return `    <invoiceDetails>
-    <lineNumber>${lineNum}</lineNumber>
-    <netValue>0.00</netValue>
-    <vatCategory>8</vatCategory>
-    <vatAmount>0.00</vatAmount>
-    <vatExemptionCategory>27</vatExemptionCategory>
-    <quantity15>${quantity}</quantity15>
-  </invoiceDetails>`;
-}
+          return `    <invoiceDetails>
+      <lineNumber>${lineNum}</lineNumber>
+      <netValue>0.00</netValue>
+      <vatCategory>8</vatCategory>
+      <vatAmount>0.00</vatAmount>
+      <vatExemptionCategory>27</vatExemptionCategory>
+      <quantity15>${quantity}</quantity15>
+    </invoiceDetails>`;
+        }
 
+        // Default classifications: category1_3 for services (2.1), category1_1 for goods (1.1)
+        const defaultCategory = isServiceInvoice ? 'category1_3' : 'category1_1';
         const classificationType =
           line.incomeClassification?.classificationType ?? 'E3_561_001';
         const classificationCategory =
-          line.incomeClassification?.classificationCategory ?? 'category1_1';
+          line.incomeClassification?.classificationCategory ?? defaultCategory;
 
         const rawNet = (line.netValue !== undefined && line.netValue !== null)
           ? Number(line.netValue)
@@ -121,20 +134,21 @@ export class AadeSerializerService {
       })
       .join('\n');
 
-    // 4. Summary Totals
+    // 3. Summary Totals
     const netSummary = isMovementOnly ? '0.00' : Number(data.totals?.totalNetValue || 0).toFixed(2);
     const vatSummary = isMovementOnly ? '0.00' : Number(data.totals?.totalVatAmount || 0).toFixed(2);
     const grossSummary = isMovementOnly ? '0.00' : Number(data.totals?.totalGrossValue || 0).toFixed(2);
 
+    const summaryCategory = isServiceInvoice ? 'category1_3' : 'category1_1';
     const summaryClassificationXml = !isMovementOnly
       ? `\n      <incomeClassification>
         <ic:classificationType>E3_561_001</ic:classificationType>
-        <ic:classificationCategory>category1_1</ic:classificationCategory>
+        <ic:classificationCategory>${summaryCategory}</ic:classificationCategory>
         <ic:amount>${netSummary}</ic:amount>
       </incomeClassification>`
       : '';
 
-    // 5. Payment Methods (Omitted for 9.1; ordered after invoiceSummary)
+    // 4. Payment Methods (Omitted for 9.1; ordered after invoiceSummary)
     let paymentMethodsXml = '';
     if (!isMovementOnly) {
       const paymentType = data.paymentMethodType ?? 1;
@@ -146,7 +160,7 @@ export class AadeSerializerService {
     </paymentMethods>`;
     }
 
-    // 6. Transport Details (Strict XSD: vehicleNumber -> transportType -> timeStamp -> carrierVatNumber)
+    // 5. Transport Details (Strict XSD: vehicleNumber -> transportType -> timeStamp -> carrierVatNumber)
     let transportXml = '';
     if (isMovementDoc && data.movement) {
       const vehicle = this.escapeXml(data.movement.vehicleNumber?.trim() || '');
