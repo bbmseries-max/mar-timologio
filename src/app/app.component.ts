@@ -2,6 +2,7 @@ import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthTenantService } from './core/services/auth-tenant.service';
+import * as Sentry from '@sentry/angular';
 
 @Component({
   selector: 'maranth-root',
@@ -108,7 +109,6 @@ import { AuthTenantService } from './core/services/auth-tenant.service';
           >
             ⚙️
           </a>
-
           <button
             type="button"
             (click)="auth.logout()"
@@ -136,4 +136,5 @@ import { AuthTenantService } from './core/services/auth-tenant.service';
 })
 export class AppComponent {
   public readonly auth = inject(AuthTenantService);
+
 }

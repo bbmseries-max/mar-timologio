@@ -44,3 +44,9 @@ Request payload requires strict WS-Security <wsse:UsernameToken> headers.
 afm_called_by must strictly be the 9 numeric digits (067424104), omitting any leading A.
 
 XML elements inside <rg:INPUT_REC> must remain unqualified (no namespace prefixes).
+
+AADE 
+​Θα θέλαμε να μας διευκρινίσετε:
+​Επίσημο Raw XML Sample: Μπορείτε να μας δώσετε ένα πλήρες, έγκυρο δείγμα XML (raw .xml) για Τύπο 9.3 που περνάει επιτυχώς από το endpoint SendInvoices στο test environment;
+​Namespace / XSD Version: Απαιτείται διαφορετικό root namespace ή διαφορετικό target endpoint/version για τα ψηφιακά δελτία αποστολής πέραν του βασικού [http://www.aade.gr/myDATA/invoice/v1.0](http://www.aade.gr/myDATA/invoice/v1.0);
+​Θέση & Sequence Tag: Ποια είναι η ακριβής ακολουθία (sequence) των στοιχείων <movePurpose>, <withoutDigitalTransportTracking>, <isDeliveryNote> και <otherDeliveryNoteHeader> στο XSD του gateway σας;

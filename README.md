@@ -1,4 +1,14 @@
-# MaranthTimologioApp
+# Maranth Invoice Pro — AADE myDATA & B2B Billing Suite
+
+**System Version:** 2.0.0-PROD  
+**Product Title:** Maranth Invoice Pro  
+**Ecosystem:** Part of the Maranth Suite (Market Engine POS &bull; Estiasi Hub &bull; Athina Appliance &bull; Invoice Pro)  
+**Target Environments:** AADE myDATA Production (`mydatapi.aade.gr`), Dev Sandbox (`mydataapidev.aade.gr`), EU VIES Open Gateway  
+
+---
+
+## System Overview
+Maranth Invoice Pro is a client-side, offline-first Angular application engineered for high-speed B2B invoicing, immediate AADE myDATA compliance, and direct cart-handover ingestion from retail POS terminals.
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.2.1.
 

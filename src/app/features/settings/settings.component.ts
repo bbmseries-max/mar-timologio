@@ -33,7 +33,7 @@ import { SubscriptionTier, SubscriptionStatus } from '@core/models/tenant.models
               <div>
                 <div class="flex items-center gap-2">
                   <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Συνδρομη Maranth Τιμολόγιο:
+                    Συνδρομη Maranth Invoice Pro:
                     <span class="font-mono text-indigo-600">{{ form.get('subscriptionTier')?.value }}</span>
                   </h3>
                   @switch (form.get('subscriptionStatus')?.value) {

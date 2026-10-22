@@ -16,7 +16,7 @@ export interface MasterProviderProfile {
 
 export const MARANTH_MASTER_PROVIDER: MasterProviderProfile = {
   legalName: 'MARANTH ΙΔΙΩΤΙΚΗ ΚΕΦΑΛΑΙΟΥΧΙΚΗ ΕΤΑΙΡΕΙΑ',
-  brandName: 'MARANTH POS & Software Systems',
+  brandName: 'Maranth Invoice Pro',
   afm: '067424104', // Replace with your IKE AFM
   doy: 'ΨΥΧΙΚΟΥ', // Replace with your IKE DOY
   gemh: '67452303000', // Replace with your IKE GEMI
