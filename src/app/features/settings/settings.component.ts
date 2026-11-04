@@ -4,7 +4,8 @@ import { greekAfmValidator } from '../../core/validators/afm.validator';
 import { FormBuilder, ReactiveFormsModule, Validators, FormControl } from '@angular/forms';
 import { LocalDbService } from '@core/services/local-db.service';
 import { AuthTenantService } from '@core/services/auth-tenant.service';
-import { SubscriptionTier, SubscriptionStatus } from '@core/models/tenant.models';
+import { MyDataService } from '@core/services/mydata.service';
+import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/models/tenant.models';
 
 @Component({
   selector: 'maranth-settings',
@@ -19,7 +20,6 @@ import { SubscriptionTier, SubscriptionStatus } from '@core/models/tenant.models
           <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Ρυθμίσεις Καταστήματος & myDATA</h1>
           <p class="text-xs text-slate-500 mt-1">Φορολογική ταυτότητα, συνδρομή και διαπιστευτήρια AADE API</p>
         </div>
-        
       </div>
 
       <form [formGroup]="form" (ngSubmit)="onSave()" class="space-y-6">
@@ -192,22 +192,20 @@ import { SubscriptionTier, SubscriptionStatus } from '@core/models/tenant.models
         <!-- Submit Button -->
         <div class="flex justify-end gap-3 pt-2">
           @if (savedNotification()) {
-          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span>✓</span> {{ savedNotification() }}
-          </span>
-        }
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span>✓</span> {{ savedNotification() }}
+            </span>
+          }
           <button
-            type="submit"
-            [disabled]="form.invalid || isSaving()"
-            class="inline-flex items-center justify-center gap-2 h-10 px-5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 disabled:opacity-50 transition active:scale-98"
-          >
-            <span>💾</span>
-            <span>{{ isSaving() ? 'Αποθήκευση...' : 'Αποθήκευση Ρυθμίσεων' }}</span>
-          </button>
-          
+  type="submit"
+  [disabled]="isSaving()"
+  class="inline-flex items-center justify-center gap-2 h-10 px-5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 disabled:opacity-50 transition active:scale-98 cursor-pointer"
+>
+  <span>💾</span>
+  <span>{{ isSaving() ? 'Αποθήκευση...' : 'Αποθήκευση Ρυθμίσεων' }}</span>
+</button>
         </div>
       </form>
-      
     </div>
   `
 })
@@ -215,33 +213,39 @@ export class SettingsComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly db = inject(LocalDbService);
   public readonly auth = inject(AuthTenantService);
+  private readonly myDataService = inject(MyDataService);
 
   public readonly isSaving = signal<boolean>(false);
   public readonly savedNotification = signal<string | null>(null);
 
   public readonly form = this.fb.group({
-    afm: ['', [Validators.required, greekAfmValidator()]],
-    doy: ['', Validators.required],
-    legalName: ['', Validators.required],
-    street: ['', Validators.required],
-    number: ['', Validators.required],
-    postalCode: ['', Validators.required],
-    city: ['', Validators.required],
-    branch: [0],
-    defaultSeries: ['A'],
-    aadeUserId: [''],
-    aadeSubscriptionKey: [''],
-    isProduction: [false],
-    // GSIS Specific Credentials
-    gsisUsername: [''],
-    gsisPassword: [''],
-    // Subscription Controls
-    subscriptionTier: ['RETAIL_SHOP' as SubscriptionTier],
-    subscriptionStatus: ['ACTIVE' as SubscriptionStatus],
-    validUntil: new FormControl<string | null>(null),
-    maxMonthlyDocuments: [1000],
-    currentMonthDocumentCount: [0]
-  });
+  // Keep basic text values, remove aggressive blocking validators
+  afm: [''],
+  doy: [''],
+  legalName: [''],
+  street: [''],
+  number: [''],
+  postalCode: [''],
+  city: [''],
+  branch: [0],
+  defaultSeries: ['A'],
+  aadeUserId: [''],
+  aadeSubscriptionKey: [''],
+  
+  // Environment selector (boolean toggle)
+  isProduction: [false],
+
+  // GSIS credentials
+  gsisUsername: [''],
+  gsisPassword: [''],
+
+  // Subscription controls
+  subscriptionTier: ['RETAIL_SHOP' as SubscriptionTier],
+  subscriptionStatus: ['ACTIVE' as SubscriptionStatus],
+  validUntil: new FormControl<string | null>(null),
+  maxMonthlyDocuments: [1000],
+  currentMonthDocumentCount: [0]
+});
 
   async ngOnInit(): Promise<void> {
     const tenantId = this.auth.currentTenantId();
@@ -249,6 +253,11 @@ export class SettingsComponent implements OnInit {
 
     const saved = await this.db.getSettingsForTenant(tenantId);
     if (saved) {
+      // Safe fallback: uses fiscalEnvironment if set, else falls back to legacy isProduction
+      const isProd = saved.fiscalEnvironment 
+        ? saved.fiscalEnvironment === 'production' 
+        : !!(saved as any).isProduction;
+
       this.form.patchValue({
         afm: saved.afm ? saved.afm.replace(/\D/g, '') : '',
         doy: saved.doy ?? '',
@@ -261,38 +270,38 @@ export class SettingsComponent implements OnInit {
         defaultSeries: saved.defaultSeries ?? 'A',
         aadeUserId: saved.aadeUserId ?? '',
         aadeSubscriptionKey: saved.aadeSubscriptionKey ?? '',
-        isProduction: !!saved.isProduction,
-        gsisUsername: (saved as any).gsisUsername ?? '',
-        gsisPassword: (saved as any).gsisPassword ?? '',
-        subscriptionTier: (saved as any).subscriptionTier ?? 'RETAIL_SHOP',
-        subscriptionStatus: (saved as any).subscriptionStatus ?? 'ACTIVE',
-        validUntil: (saved as any).validUntil ?? null,
-        maxMonthlyDocuments: (saved as any).maxMonthlyDocuments ?? 1000,
-        currentMonthDocumentCount: (saved as any).currentMonthDocumentCount ?? 0
+        isProduction: isProd,
+        gsisUsername: saved.gsisUsername ?? '',
+        gsisPassword: saved.gsisPassword ?? '',
+        subscriptionTier: (saved.subscriptionTier as SubscriptionTier) ?? 'RETAIL_SHOP',
+        subscriptionStatus: (saved.subscriptionStatus as SubscriptionStatus) ?? 'ACTIVE',
+        validUntil: saved.validUntil ?? null,
+        maxMonthlyDocuments: saved.maxMonthlyDocuments ?? 1000,
+        currentMonthDocumentCount: saved.currentMonthDocumentCount ?? 0
       });
     }
   }
 
   async onSave(): Promise<void> {
-    if (this.form.invalid) return;
-
-    const tenantId = this.auth.currentTenantId();
-    if (!tenantId) {
-      alert('Σφάλμα: Δεν βρέθηκε ενεργός οργανισμός (Tenant).');
-      return;
-    }
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       alert('Παρακαλώ διορθώστε τα κόκκινα πεδία στη φόρμα πριν την αποθήκευση.');
       return;
     }
 
+    const tenantId = this.auth.currentTenantId();
+    if (!tenantId) {
+      alert('Σφάλμα: Δεν βρέθηκε ενεργός οργανισμός (Tenant).');
+      return;
+    }
+
     this.isSaving.set(true);
     try {
-      const effectiveTenantId = tenantId || 'tenant_default';
       const val = this.form.getRawValue();
+      const resolvedEnv: FiscalEnvironment = val.isProduction ? 'production' : 'dev';
+
       await this.db.saveSettingsForTenant(tenantId, {
-        tenantId: effectiveTenantId,
+        tenantId,
         afm: val.afm!,
         doy: val.doy!,
         legalName: val.legalName!,
@@ -304,16 +313,20 @@ export class SettingsComponent implements OnInit {
         defaultSeries: val.defaultSeries || 'A',
         aadeUserId: val.aadeUserId || '',
         aadeSubscriptionKey: val.aadeSubscriptionKey || '',
-        isProduction: !!val.isProduction,
+        fiscalEnvironment: resolvedEnv,
+        isProduction: val.isProduction ?? false,
         gsisUsername: val.gsisUsername || '',
         gsisPassword: val.gsisPassword || '',
-        subscriptionTier: val.subscriptionTier,
-        subscriptionStatus: val.subscriptionStatus,
+        subscriptionTier: val.subscriptionTier ?? 'RETAIL_SHOP',
+        subscriptionStatus: val.subscriptionStatus ?? 'ACTIVE',
         validUntil: val.validUntil,
-        maxMonthlyDocuments: val.maxMonthlyDocuments,
-        currentMonthDocumentCount: val.currentMonthDocumentCount,
+        maxMonthlyDocuments: val.maxMonthlyDocuments ?? 1000,
+        currentMonthDocumentCount: val.currentMonthDocumentCount ?? 0,
         updatedAt: new Date().toISOString()
-      } as any);
+      });
+
+      // Synchronize runtime signal across the application
+      this.myDataService.setEnvironment(resolvedEnv);
 
       this.savedNotification.set('Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!');
       setTimeout(() => this.savedNotification.set(null), 3000);

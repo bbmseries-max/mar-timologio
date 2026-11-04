@@ -1,0 +1,320 @@
+<div class="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 py-6 no-print">
+
+  <!-- Top Header & New Button -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-5">
+    <div>
+      <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Παραστατικά & myDATA</h1>
+      <p class="text-xs text-slate-500 mt-0.5">Διαχείριση, αναζήτηση και παρακολούθηση φορολογικών εγγραφών</p>
+    </div>
+
+    <div class="flex items-center gap-2.5">
+      <button
+        type="button"
+        (click)="exportCsv()"
+        class="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-2xs transition active:scale-95 cursor-pointer"
+      >
+        <span>📊</span>
+        <span>Εξαγωγή CSV (Excel)</span>
+      </button>
+
+      <a
+        routerLink="/invoices/new"
+        class="inline-flex items-center gap-1.5 h-9 px-3.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm shadow-indigo-500/20 transition active:scale-95"
+      >
+        <span>+</span>
+        <span>Νέο Παραστατικό</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- KPI Summary Cards -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-1">
+      <span class="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">Τζίρος (Σύνολο)</span>
+      <p class="text-lg sm:text-xl font-bold text-slate-900 font-mono">
+        {{ kpiSummary().grossTotal | currency:'EUR':'symbol':'1.2-2' }}
+      </p>
+      <span class="text-[10px] text-slate-400">Ενεργές εγγραφές (χωρίς ακυρωμένα)</span>
+    </div>
+
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-1">
+      <span class="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">Καθαρή Αξία</span>
+      <p class="text-lg sm:text-xl font-bold text-slate-800 font-mono">
+        {{ kpiSummary().netTotal | currency:'EUR':'symbol':'1.2-2' }}
+      </p>
+      <span class="text-[10px] text-slate-400">Βάση φορολογίας</span>
+    </div>
+
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-1">
+      <span class="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">Φ.Π.Α. προς Απόδοση</span>
+      <p class="text-lg sm:text-xl font-bold text-indigo-600 font-mono">
+        {{ kpiSummary().vatTotal | currency:'EUR':'symbol':'1.2-2' }}
+      </p>
+      <span class="text-[10px] text-slate-400">Υπολογισμός περιοδικής δήλωσης</span>
+    </div>
+
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-1">
+      <span class="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">Κατάσταση</span>
+      <div class="flex items-center gap-2 pt-0.5 text-xs font-semibold">
+        <span class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-mono">
+          {{ kpiSummary().transmittedCount }} myDATA
+        </span>
+        @if (kpiSummary().cancelledCount > 0) {
+          <span class="text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 font-mono">
+            {{ kpiSummary().cancelledCount }} Ακυρ.
+          </span>
+        }
+      </div>
+      <span class="text-[10px] text-slate-400">{{ kpiSummary().draftCount }} πρόχειρα σε αναμονή</span>
+    </div>
+  </div>
+
+  <!-- Search & Filter Bar -->
+  <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
+      <!-- Full Text Search Input -->
+      <div class="md:col-span-5 relative">
+        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-xs">🔍</span>
+        <input
+          type="text"
+          [ngModel]="searchQuery()"
+          (ngModelChange)="searchQuery.set($event)"
+          placeholder="Αναζήτηση με Σειρά-Α/Α, Επωνυμία, Α.Φ.Μ. ή MARK..."
+          class="w-full text-xs rounded-lg border-slate-200 pl-8 pr-3 py-2 border bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+        />
+      </div>
+
+      <!-- Series Filter -->
+      <div class="md:col-span-2">
+        <select
+          [ngModel]="seriesFilter()"
+          (ngModelChange)="seriesFilter.set($event)"
+          class="w-full text-xs rounded-lg border-slate-200 px-2.5 py-2 border bg-white text-slate-700 font-medium"
+        >
+          @for (s of availableSeries(); track s) {
+            <option [value]="s">{{ s === 'ALL' ? 'Όλες οι Σειρές' : 'Σειρά ' + s }}</option>
+          }
+        </select>
+      </div>
+
+      <!-- Date Range (From - To) -->
+      <div class="md:col-span-5 grid grid-cols-2 gap-2">
+        <input
+          type="date"
+          [ngModel]="dateFrom()"
+          (ngModelChange)="dateFrom.set($event)"
+          class="w-full text-xs rounded-lg border-slate-200 px-2 py-1.5 border text-slate-700 font-mono"
+          title="Από ημερομηνία"
+        />
+        <input
+          type="date"
+          [ngModel]="dateTo()"
+          (ngModelChange)="dateTo.set($event)"
+          class="w-full text-xs rounded-lg border-slate-200 px-2 py-1.5 border text-slate-700 font-mono"
+          title="Έως ημερομηνία"
+        />
+      </div>
+    </div>
+
+    <!-- Status Tabs -->
+    <div class="flex items-center gap-1.5 border-t border-slate-100 pt-3 overflow-x-auto text-xs">
+      <button
+        type="button"
+        (click)="statusFilter.set('ALL')"
+        [class.bg-indigo-600]="statusFilter() === 'ALL'"
+        [class.text-white]="statusFilter() === 'ALL'"
+        [class.bg-slate-100]="statusFilter() !== 'ALL'"
+        [class.text-slate-600]="statusFilter() !== 'ALL'"
+        class="px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer"
+      >
+        Όλα ({{ allInvoices().length }})
+      </button>
+
+      <button
+        type="button"
+        (click)="statusFilter.set('TRANSMITTED')"
+        [class.bg-emerald-600]="statusFilter() === 'TRANSMITTED'"
+        [class.text-white]="statusFilter() === 'TRANSMITTED'"
+        [class.bg-slate-100]="statusFilter() !== 'TRANSMITTED'"
+        [class.text-slate-600]="statusFilter() !== 'TRANSMITTED'"
+        class="px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1"
+      >
+        <span>✓</span>
+        <span>myDATA</span>
+      </button>
+
+      <button
+        type="button"
+        (click)="statusFilter.set('CANCELLED')"
+        [class.bg-rose-600]="statusFilter() === 'CANCELLED'"
+        [class.text-white]="statusFilter() === 'CANCELLED'"
+        [class.bg-slate-100]="statusFilter() !== 'CANCELLED'"
+        [class.text-slate-600]="statusFilter() !== 'CANCELLED'"
+        class="px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1"
+      >
+        <span>🚫</span>
+        <span>Ακυρωμένα</span>
+      </button>
+
+      <button
+        type="button"
+        (click)="statusFilter.set('DRAFT')"
+        [class.bg-amber-600]="statusFilter() === 'DRAFT'"
+        [class.text-white]="statusFilter() === 'DRAFT'"
+        [class.bg-slate-100]="statusFilter() !== 'DRAFT'"
+        [class.text-slate-600]="statusFilter() !== 'DRAFT'"
+        class="px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1"
+      >
+        <span>📝</span>
+        <span>Πρόχειρα</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Data Table -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+    @if (filteredInvoices().length === 0) {
+      <div class="p-12 text-center text-slate-500 space-y-2">
+        <p class="text-sm font-medium">Δεν βρέθηκαν παραστατικά με τα επιλεγμένα κριτήρια.</p>
+        <button
+          type="button"
+          (click)="searchQuery.set(''); statusFilter.set('ALL'); seriesFilter.set('ALL'); dateFrom.set(''); dateTo.set('')"
+          class="text-xs text-indigo-600 hover:underline font-semibold cursor-pointer"
+        >
+          Καθαρισμός όλων των φίλτρων &rarr;
+        </button>
+      </div>
+    } @else {
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-left text-xs">
+          <thead class="bg-slate-50 text-slate-500 font-medium uppercase">
+            <tr>
+              <th class="px-4 py-3">Παραστατικό</th>
+              <th class="px-4 py-3">Ημερομηνία</th>
+              <th class="px-4 py-3">Πελάτης</th>
+              <th class="px-4 py-3">Α.Φ.Μ.</th>
+              <th class="px-4 py-3 text-right">Σύνολο (€)</th>
+              <th class="px-4 py-3 text-center">Κατάσταση</th>
+              <th class="px-4 py-3 text-right">Ενέργειες</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            @for (inv of filteredInvoices(); track inv.id) {
+              <tr class="hover:bg-slate-50/50 transition">
+                <!-- Document Info -->
+                <td class="px-4 py-3 font-mono font-bold text-slate-900">
+                  <div class="flex items-center gap-1.5">
+                    <span>{{ inv.series }}-{{ inv.documentNumber }}</span>
+                    <span class="text-[10px] px-1.5 py-0.2 rounded font-sans font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                      {{ inv.invoiceType }}
+                    </span>
+                  </div>
+                  @if (inv.mark) {
+                    <span class="block text-[9px] font-mono text-slate-400 font-normal">MARK: {{ inv.mark }}</span>
+                  }
+                  @if (inv.cancellationMark) {
+                    <span class="block text-[9px] font-mono text-rose-500 font-bold">C-MARK: {{ inv.cancellationMark }}</span>
+                  }
+                </td>
+
+                <!-- Date -->
+                <td class="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">{{ inv.issueDate }}</td>
+
+                <!-- Customer Details -->
+                <td class="px-4 py-3 font-medium text-slate-800 max-w-[200px] truncate" [title]="inv.customerName">
+                  {{ inv.customerName || '—' }}
+                </td>
+
+                <!-- AFM -->
+                <td class="px-4 py-3 font-mono text-slate-600 whitespace-nowrap">{{ inv.customerAfm || '—' }}</td>
+
+                <!-- Financial Total -->
+                <td class="px-4 py-3 text-right font-mono font-bold whitespace-nowrap"
+                    [class.text-slate-400]="inv.transmissionStatus === 'CANCELLED'"
+                    [class.line-through]="inv.transmissionStatus === 'CANCELLED'"
+                    [class.text-slate-900]="inv.transmissionStatus !== 'CANCELLED'">
+                  {{ inv.totalGross | currency: 'EUR' }}
+                </td>
+
+                <!-- Status Badge -->
+                <td class="px-4 py-3 text-center whitespace-nowrap">
+                  @if (inv.transmissionStatus === 'CANCELLED') {
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                      🚫 Ακυρωμένο
+                    </span>
+                  } @else if (inv.mark && inv.mark !== '—') {
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      ✓ myDATA
+                    </span>
+                  } @else if (inv.transmissionStatus === 'FAILED') {
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                      ✕ Σφάλμα
+                    </span>
+                  } @else {
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                      📝 Πρόχειρο
+                    </span>
+                  }
+                </td>
+
+                <!-- Actions -->
+                <td class="px-4 py-3 text-right whitespace-nowrap">
+                  <div class="inline-flex items-center justify-end gap-1.5">
+                    @if (!inv.mark && inv.transmissionStatus === 'DRAFT') {
+                      <a
+                        [routerLink]="['/invoices/new']"
+                        [queryParams]="{ draftId: inv.id }"
+                        class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition h-7 cursor-pointer"
+                      >
+                        <span>✏️</span>
+                        <span>Επεξεργασία</span>
+                      </a>
+
+                      <button
+                        type="button"
+                        (click)="deleteDraft(inv.id)"
+                        class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-lg transition h-7 cursor-pointer"
+                        title="Διαγραφή πρόχειρου"
+                      >
+                        <span>🗑️</span>
+                      </button>
+                    } @else {
+                      <button
+                        type="button"
+                        (click)="viewInvoice(inv)"
+                        class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition h-7 cursor-pointer"
+                      >
+                        <span>👁️</span>
+                        <span>Προβολή</span>
+                      </button>
+
+                      @if (inv.transmissionStatus === 'TRANSMITTED' && inv.mark && inv.mark !== '—') {
+                        <button
+                          type="button"
+                          (click)="onCancelInvoice(inv)"
+                          [disabled]="isCancelling()[inv.id]"
+                          class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition disabled:opacity-50 h-7 cursor-pointer"
+                        >
+                          <span>🚫</span>
+                          <span>{{ isCancelling()[inv.id] ? '...' : 'Ακύρωση' }}</span>
+                        </button>
+                      }
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+
+  <!-- Print Modal -->
+  @if (selectedInvoiceForPrint(); as printData) {
+    <maranth-invoice-print
+      [invoice]="printData"
+      (close)="closePrintModal()"
+    ></maranth-invoice-print>
+  }
+</div>

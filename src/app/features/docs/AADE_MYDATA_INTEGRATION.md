@@ -149,3 +149,12 @@ Dexie Update WorkflowTypeScriptasync sendToMyData(invoice: LocalInvoiceRecord): 
   }
 }
 6. Milestone CheckpointFirst Successful Live Submission Verified:Status: SuccessTest MARK: 400015635821372Test UID: A8B4ED89FE3B75D9035B71DBD2ED0497D5DEE8BEOfficial QR Verification link received and confirmed.
+W759TVu-!XWq//.
+maranthApp
+1b29628260c108d7ed58b3b7fe25e315
+
+curl -X POST https://gsis-lookup.bbmseries.workers.dev/send-invoice \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"test","W759TVu-!XWq//.":"test","xml":"<test/>"}'
+
+  

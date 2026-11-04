@@ -14,6 +14,8 @@ export interface TenantFeatureFlags {
   allowOfflineDrafts: boolean;
 }
 
+export type FiscalEnvironment = 'production' | 'dev' | 'mock';
+
 export interface TenantFiscalIdentity {
   afm: string;
   legalName: string;
@@ -29,6 +31,9 @@ export interface TenantFiscalIdentity {
   bankIban?: string;
   defaultSeries: string;
   defaultVehiclePlate?: string;
+  fiscalEnvironment: FiscalEnvironment;
+  aadeUserId?: string;
+  aadeSubscriptionKey?: string;
 }
 
 export interface TenantOrganization {

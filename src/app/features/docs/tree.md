@@ -86,3 +86,12 @@ D:\\Maranth-timologio\\
 
 └── tsconfig.spec.json
 
+curl -X GET "https://mydatapi.aade.gr/myDATA/RequestTransmittedDocs?mark=0&dateFrom=12/10/2026&dateTo=17/10/2026" \
+  -H "A067424104: 3510160" \
+  -H "maranthApp: 1b29628260c108d7ed58b3b7fe25e315"
+
+  Cancelling MARK: 400015656551763 ... SUCCESS! (Cancellation MARK: 400015830121454)
+Cancelling MARK: 400015659334179 ... SUCCESS! (Cancellation MARK: 400015830121910)
+Cancelling MARK: 400015679772391 ... SUCCESS! (Cancellation MARK: 400015830122118)
+Cancelling MARK: 400015680722168 ... SUCCESS! (Cancellation MARK: 400015830122564)
+Cancelling MARK: 400015682183143 ... SUCCESS! (Cancellation MARK: 400015830122751)

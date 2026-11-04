@@ -1,7 +1,7 @@
 // src/app/core/services/aade-client.service.ts
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
+import { firstValueFrom, Observable } from 'rxjs';
 import { LocalDbService } from './local-db.service';
 import { AuthTenantService } from './auth-tenant.service';
 
@@ -75,6 +75,22 @@ export class AadeClientService {
       };
     }
   }
+
+  cancelInvoice(mark: string, credentials: { userId: string; subscriptionKey: string; isProduction: boolean }): Observable<string> {
+  const baseUrl = credentials.isProduction 
+    ? 'https://mydatapi.aade.gr/myDATA' 
+    : 'https://mydataapidev.aade.gr';
+
+  const url = `${baseUrl}/CancelInvoice`;
+  const params = new HttpParams().set('mark', mark);
+
+  const headers = new HttpHeaders({
+    'aade-user-id': credentials.userId,
+    'ocp-apim-subscription-key': credentials.subscriptionKey,
+  });
+
+  return this.http.post(url, null, { headers, params, responseType: 'text' });
+}
 
   /**
    * Parses error details if raw XML was returned from an AADE rejection.

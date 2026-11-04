@@ -114,3 +114,7 @@ customers: 'id, tenantId, afm, legalName, phone, updatedAt'
 - **Invoice Dispatch:** `https://gsis-lookup.bbmseries.workers.dev/send-invoice` (POST XML)
 - **GSIS AFM Lookup:** `https://gsis-lookup.bbmseries.workers.dev/gsis/lookup?afm={AFM}` (GET)
 - **Live AADE MARK Verified:** `400015635821372`
+
+ΤΠΥ (for service invoice)
+
+ΤΔΑ (for sales invoice)

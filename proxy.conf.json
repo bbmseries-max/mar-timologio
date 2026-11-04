@@ -1,0 +1,20 @@
+{
+  "/api/mydata-dev": {
+    "target": "https://mydataapidev.aade.gr",
+    "secure": true,
+    "changeOrigin": true,
+    "pathRewrite": {
+      "^/api/mydata-dev": ""
+    },
+    "logLevel": "debug"
+  },
+  "/api/mydata-prod": {
+    "target": "https://mydatapi.aade.gr",
+    "secure": true,
+    "changeOrigin": true,
+    "pathRewrite": {
+      "^/api/mydata-prod": "/myDATA"
+    },
+    "logLevel": "debug"
+  }
+}

@@ -76,3 +76,19 @@ While domestic wholesale accompanying transit is fulfilled via **Type 1.1** (wit
     "validUntil": null,
     "monthlyLimit": 999999
   }
+
+  Official Live Transmitted Document: TES-1
+Internal Dexie ID: e696122d-c7b2-47d7-8de7-054a1498c909 (or ad168c4e-7f6e-478b-982a-7af4ed3e1dda)
+
+Series / Number: TES - 1
+
+Issue Date: 2026-11-02
+
+AADE MARK: 400001975159851
+
+AADE UID: 9C5B2B14B48BCA0295301B98C1ACF2EEFC1DC6C8
+
+AADE Official QR Code URL:
+
+Plaintext
+https://mydataapidev.aade.gr/TimologioQR/QRInfo?q=VvGdh9ASWz56FycRhR1yYveHzTDYHE3MfoAifn5%2bY397UCGrbKmR7AYRXfm4TolTkoclOOSWoIjp1i9T8U2PdV6AIFStxNdQJDQpBL8Dpkg%3d

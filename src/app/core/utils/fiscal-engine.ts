@@ -83,10 +83,20 @@ export function calculateInvoiceTotals(lines: InvoiceLineItem[]): InvoiceTotals 
     totalNetValue += line.netValue;
     totalVatAmount += line.vatAmount;
 
+    // Resolve rate fallback (e.g. category 1 = 24%, 2 = 13%, 7/8 = 0%)
+    const resolvedPct = line.vatPercentage ?? (
+      line.vatRateCategory === 1 ? 24 :
+      line.vatRateCategory === 2 ? 13 :
+      line.vatRateCategory === 3 ? 6  :
+      line.vatRateCategory === 4 ? 17 :
+      line.vatRateCategory === 5 ? 9  :
+      line.vatRateCategory === 6 ? 4  : 0
+    );
+
     const current = vatMap.get(line.vatRateCategory) || {
       net: 0,
       vat: 0,
-      pct: line.vatPercentage,
+      pct: resolvedPct,
     };
     current.net += line.netValue;
     current.vat += line.vatAmount;

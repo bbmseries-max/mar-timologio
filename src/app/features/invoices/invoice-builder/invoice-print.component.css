@@ -11,13 +11,33 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 12mm 15mm 12mm 15mm;
+    margin: 8mm;
   }
 
-  body {
-    background: transparent !important;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
+  body > *:not(#aade-isolated-print-area) {
+    display: none !important;
+  }
+
+  #aade-isolated-print-area .print-sheet {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: auto !important;
+    height: 100% !important;
+    max-height: 280mm !important; /* guarantees single page fit */
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  .avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   .print-container {

@@ -57,3 +57,29 @@ if (data.invoiceType === '9.3') {
   // 3. Inject verified <otherDeliveryNoteHeader> tag sequence
   // 4. Emit zero-value lines with recType: 6 and quantity15
 }
+
+Phase B Digital Delivery Notes (Type 9.3) ✅:
+
+Full lifecycle active: Issue, Sandbox transmission (HTTP 200 with MARK), Cancellation via myDATA API, Archive/Restore toggle (isArchived), and local purge.
+
+Schema rules verified: zeroed pricing, vatCategory=8, mandatory <itemDescr>, transport header with addresses, and movement QR rendering.
+
+UI Table & Archive Engine:
+
+Corrected Dexie composite index handling across [tenantId+id].
+
+Cleaned button bindings so 👁️ View, 🚫 Cancel, 📦 Archive / 📤 Restore, and ❌ Delete map accurately across all status states.
+
+AADE Serialization Fixes (AadeSerializerService):
+
+Resolved Error 220: <name> tag stripped for all Greek counterparts (country === 'GR').
+
+Resolved Error 247: <itemDescr> restricted exclusively to Type 9.3 movement lines, omitted on commercial types.
+
+Resolved Code 101 XSD Sequence: Aligned <invoiceSummary> tags strictly to net -> vat -> withheld -> otherTaxes -> stampDuty -> fees -> deductions -> gross.
+
+Invoice Builder Calculations:
+
+Wired syncLines() to trigger recalculateInvoiceTotals(), fixing the €0.00 footer display.
+
+Linked movePurpose select to update return series (ΕΠΙΣΤΡ) cleanly.

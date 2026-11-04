@@ -1,49 +1,80 @@
+import { FiscalEnvironment, SubscriptionTier, SubscriptionStatus } from './tenant.models';
+
 export interface LocalInvoiceRecord {
-  id?: number | string; // UUID primary key
-  tenantId: string;
+  id: string; // UUID primary key
+  tenantId: string; // Partition key
   series: string;
   documentNumber: number;
-  issueDate: string;
-  invoiceType: string;
+  issueDate: string; // YYYY-MM-DD
+  invoiceType: string; // e.g. '1.1', '2.1', '9.3'
   customerAfm: string;
   customerName: string;
   totalNet: number;
   totalVat: number;
   totalGross: number;
-  transmissionStatus: 'DRAFT' | 'TRANSMITTED' | 'FAILED';
+  transmissionStatus: 'DRAFT' | 'TRANSMITTED' | 'FAILED' | 'CANCELLED';
   mark?: string;
   uid?: string;
   qrUrl?: string;
   payloadJson: string; // Complete serialized form snapshot
   updatedAt: number;
   createdAt: number;
+  cancellationMark?: string;
+  cancelledAt?: string;
+  isArchived?: boolean;
 }
 
-export interface CompanySettingsRecord {
-  id: string;
+export interface TenantSettingsRecord {
+  // Primary key in Dexie
+  tenantId: string;
+  id?: string; // Optional alias for legacy code reading record.id
+
+  // Company Tax & Business Details
   afm: string;
-  branch: number;
-  legalName: string;
   doy: string;
-  aadeUserId: string;
-  aadeSubscriptionKey: string;
-  isProduction: boolean;
+  legalName: string;
   tradeName?: string;
   gemiNumber?: string;
-  street?: string;
-  number?: string;
-  postalCode?: string;
-  city?: string;
+  street: string;
+  number: string;
+  postalCode: string;
+  city: string;
+  branch: number;
   phone?: string;
   email?: string;
-  defaultSeries?: string;
+  defaultSeries: string;
   defaultVehiclePlate?: string;
   bankIban?: string;
+
+  // myDATA REST API Credentials & Environment
+  aadeUserId?: string;
+  aadeSubscriptionKey?: string;
+  fiscalEnvironment: FiscalEnvironment; // 'mock' | 'dev' | 'production'
+  isProduction?: boolean;
+
+  // GSIS Taxisnet Lookup Credentials (RgWsPublic2)
+  gsisUsername?: string;
+  gsisPassword?: string;
+
+  // Subscription & Tier Limits
+  subscriptionTier?: SubscriptionTier | string;
+  subscriptionStatus?: SubscriptionStatus | string;
+  validUntil?: string | null;
+  maxMonthlyDocuments?: number;
+  currentMonthDocumentCount?: number;
+
+  updatedAt: string;
 }
+
+/**
+ * Backward compatibility alias so legacy code expecting 
+ * CompanySettingsRecord compiles without throwing TS errors
+ */
+export type CompanySettingsRecord = TenantSettingsRecord;
 
 export interface Product {
   id: string;
-  tenantId: string; // <-- Partition key
+  tenantId: string;
   name: string;
   price: number;
   stockQuantity: number;
@@ -55,8 +86,8 @@ export interface Product {
   isPinned?: boolean;
 }
 
-export interface TenantSettingsRecord {
-  id: string; // equals tenantId
+export interface TenantFiscalRecord {
+  id: string;
   tenantId: string;
   fiscalIdentityJson: string;
   updatedAt: number;

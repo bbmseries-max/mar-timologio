@@ -71,6 +71,7 @@
               "buildTarget": "maranth-timologio-app:build:production"
             },
             "development": {
+              "proxyConfig": "proxy.conf.json",
               "buildTarget": "maranth-timologio-app:build:development"
             }
           },

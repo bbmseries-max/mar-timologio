@@ -497,14 +497,30 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
       </div>
     </div>
   `,
-  styles: [`
+ styles: [`
     @media print {
-      /* 1. Hide everything on the original app page */
+      /* 1. Reset standard browser page margins */
+      @page {
+        size: A4 portrait;
+        margin: 6mm 8mm;
+      }
+
+      html, body {
+        height: auto !important;
+        min-height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      /* 2. Hide everything on the original app page */
       body > *:not(#aade-isolated-print-area) {
         display: none !important;
       }
 
-      /* 2. Style the isolated print container at root level */
+      /* 3. Style the isolated print container at root level */
       #aade-isolated-print-area {
         display: block !important;
         position: static !important;
@@ -512,6 +528,10 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
         margin: 0 !important;
         padding: 0 !important;
         background: #ffffff !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
 
       #aade-isolated-print-area .print-sheet {
@@ -522,6 +542,10 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
         border: none !important;
         padding: 0 !important;
         margin: 0 !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
       }
 
       #aade-isolated-print-area .thermal-receipt {
@@ -532,11 +556,46 @@ type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
         padding: 0 !important;
         box-shadow: none !important;
         border: none !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
       }
 
+      /* 4. Keep rows, visual tags, and images together */
       table, tr, td, th, canvas, img {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
+      }
+
+      /* 5. Compact tables and sections */
+      .items-table {
+        margin-bottom: 6px !important;
+      }
+
+      /* 6. Lock signatures block */
+      .signatures-section,
+      .signature-block {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        page-break-before: avoid !important;
+        break-before: avoid !important;
+        margin-top: 8px !important;
+        margin-bottom: 4px !important;
+      }
+
+      /* 7. Glue the single-line footer to page 1 */
+      .system-footer,
+      .print-footer,
+      footer {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        page-break-before: avoid !important;
+        break-before: avoid !important;
+        margin-top: 4px !important;
+        padding-top: 4px !important;
+        line-height: 1.1 !important;
+        font-size: 8px !important;
       }
     }
   `],
