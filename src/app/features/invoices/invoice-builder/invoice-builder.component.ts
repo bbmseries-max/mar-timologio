@@ -140,7 +140,7 @@ public readonly invoiceForm = this.fb.group({
       afm: ['', [Validators.required, greekAfmValidator()]],
       legalName: ['', Validators.required],
       doy: [''],
-      email: ['', Validators.email],
+      email: [''],
       street: [''],
       number: [''],
       postalCode: [''],
@@ -970,7 +970,7 @@ public readonly invoiceForm = this.fb.group({
    * "ΑΓΙΑΣ ΜΑΡΙΝΑΣ 26        19400 - ΚΟΡΩΠΙ"
    * into street, number, postalCode, and city.
    */
-  private parseGsisAddress(rawAddress: string | null | undefined): {
+ private parseGsisAddress(rawAddress: string | null | undefined): {
   street: string;
   number: string;
   postalCode: string;
@@ -979,37 +979,54 @@ public readonly invoiceForm = this.fb.group({
   const fallback = { street: '', number: '1', postalCode: '', city: '' };
   if (!rawAddress || typeof rawAddress !== 'string') return fallback;
 
-  // Normalize all whitespaces, tabs, and non-breaking spaces
+  // 1. Normalize whitespace, tabs, and special characters
   const cleaned = rawAddress.trim().replace(/\s+/g, ' ');
 
-  // Look for the 5-digit Greek postal code
-  const zipMatch = cleaned.match(/\b(\d{5})\b/);
+  // 2. Match all 5-digit sequences, preferring the last one before city
+  const allZipMatches = [...cleaned.matchAll(/\b(\d{5})\b/g)];
+  const zipMatch = allZipMatches.length > 0 ? allZipMatches[allZipMatches.length - 1] : null;
 
   if (zipMatch && zipMatch.index !== undefined) {
     const postalCode = zipMatch[1];
-    const beforeZip = cleaned.substring(0, zipMatch.index).trim();
-    // Strip hyphens, en-dashes, em-dashes and spaces after zip
-    const afterZip = cleaned.substring(zipMatch.index + 5).replace(/^[\s\-–—]+/, '').trim();
+    let beforeZip = cleaned.substring(0, zipMatch.index).trim();
+    
+    // Clean trailing hyphens, dots, commas before zip
+    beforeZip = beforeZip.replace(/[\-–—.,]+$/, '').trim();
 
-    // Extract street number from the end of beforeZip (e.g. "ΑΓΙΑΣ ΜΑΡΙΝΑΣ 26" -> "26")
+    // Clean leading/trailing punctuation after zip
+    let afterZip = cleaned.substring(zipMatch.index + 5).replace(/^[\s\-–—.,]+/, '').trim();
+
+    // Remove any trailing country code like "GR" or "ΕΛΛΑΔΑ" if attached to city
+    afterZip = afterZip.replace(/[\s\-–—]+(GR|GREECE|ΕΛΛΑΔΑ)$/i, '').trim();
+
+    // 3. Extract street number:
+    // Match trailing digits/letters, but ensure it's not "0" or part of "ΧΛΜ 11"
     const numMatch = beforeZip.match(/^(.*?)(?:\s+(\d+[A-Za-z\u0370-\u03ff]*))$/);
 
     let street = beforeZip;
     let number = '1';
 
-    if (numMatch) {
-      street = numMatch[1]?.trim() || beforeZip;
-      number = numMatch[2]?.trim() || '1';
+    if (numMatch && numMatch[2]) {
+      const candidateNum = numMatch[2].trim();
+      // If candidate is "0" or beforeZip is a highway format, don't treat 0 as number
+      if (candidateNum !== '0') {
+        street = numMatch[1]?.trim() || beforeZip;
+        number = candidateNum;
+      } else {
+        // Strip trailing zero from street name if it was a VIES placeholder
+        street = numMatch[1]?.trim() || beforeZip;
+      }
     }
 
     return {
       street: street || beforeZip,
       number: number || '1',
       postalCode: postalCode,
-      city: afterZip || 'Αθήνα',
+      city: afterZip || '', // Do not force 'Αθήνα' if outside Attica
     };
   }
 
+  // Fallback when no 5-digit zip code exists
   return {
     street: cleaned,
     number: '1',
@@ -1083,28 +1100,47 @@ public readonly invoiceForm = this.fb.group({
       });
   }
 
-  private populateCustomerForm(data: {
-    legalName: string;
-    doy?: string;
-    street?: string;
-    number?: string;
-    postalCode?: string;
-    city?: string;
-    address?: {
-      street?: string;
-      number?: string;
-      postalCode?: string;
-      city?: string;
-    };
-  }): void {
-    const legalName = (data.legalName || '').trim();
-    const doy = (data.doy || '').trim();
-    let street = (data.street || data.address?.street || '').trim();
-    let number = (data.number || data.address?.number || '').trim();
-    let postalCode = (data.postalCode || data.address?.postalCode || '').trim();
-    let city = (data.city || data.address?.city || '').trim();
+  private populateCustomerForm(data: any): void {
+    if (!data) return;
 
-    // If street contains the combined GSIS string or postalCode/city are missing
+    const legalName = (data.legalName || data.name || data.onomasia || '').trim();
+    const doy = (data.doyDescr || data.doy || data.doy_descr || '').trim();
+    
+
+    // Map from either postalAddress* (GSIS) or street/number (Local/VIES)
+    let street = (
+      data.postalAddress ||
+      data.postal_address ||
+      data.street ||
+      data.address?.street ||
+      ''
+    ).trim();
+
+    let number = (
+      data.postalAddressNo ||
+      data.postal_address_no ||
+      data.number ||
+      data.address?.number ||
+      ''
+    ).trim();
+
+    let postalCode = (
+      data.postalZipCode ||
+      data.postal_zip_code ||
+      data.postalCode ||
+      data.address?.postalCode ||
+      ''
+    ).trim();
+
+    let city = (
+      data.postalAreaDescription ||
+      data.postal_area_description ||
+      data.city ||
+      data.address?.city ||
+      ''
+    ).trim();
+
+    // Deconstruct street if it contains postal code or combined address
     if (street && (!postalCode || !city || /\d{5}/.test(street))) {
       const parsed = this.parseGsisAddress(street);
       street = parsed.street || street;
@@ -1113,11 +1149,11 @@ public readonly invoiceForm = this.fb.group({
       city = city || parsed.city;
     }
 
-    // Default number if missing so AADE doesn't reject empty tag
     if (!number) number = '1';
 
-    // 1. Patch customer form group
-    const customerGroup = this.invoiceForm.get('customer');
+    const normalizedNumber = (number && number !== '0' && number !== '00') ? number : '1';
+
+   const customerGroup = this.invoiceForm.get('customer');
     if (customerGroup) {
       customerGroup.patchValue(
         {
@@ -1134,29 +1170,11 @@ public readonly invoiceForm = this.fb.group({
       customerGroup.updateValueAndValidity({ emitEvent: true });
     }
 
-    // 2. Ensure movement controls are enabled & patch destination
+    // Auto-fill delivery address for movement documents
     if (this.isMovementDocument) {
-      const movementGroup = this.invoiceForm.get('movement');
-      if (movementGroup?.disabled) {
-        movementGroup.enable({ emitEvent: false });
-      }
-
-      const addressToGroup = this.invoiceForm.get('movement.addressTo');
-      if (addressToGroup) {
-        if (addressToGroup.disabled) {
-          addressToGroup.enable({ emitEvent: false });
-        }
-        addressToGroup.patchValue(
-          {
-            street,
-            number,
-            postalCode,
-            city,
-          } as any,
-          { emitEvent: true }
-        );
-        addressToGroup.markAsDirty();
-        addressToGroup.updateValueAndValidity({ emitEvent: true });
+      const addressTo = this.invoiceForm.get('movement.addressTo');
+      if (addressTo) {
+        addressTo.patchValue({ street, number, postalCode, city }, { emitEvent: true });
       }
     }
   }

@@ -83,3 +83,7 @@ Invoice Builder Calculations:
 Wired syncLines() to trigger recalculateInvoiceTotals(), fixing the €0.00 footer display.
 
 Linked movePurpose select to update return series (ΕΠΙΣΤΡ) cleanly.
+
+git add .
+git commit -m "feat: stabilize myDATA 1.1, 9.3, 2.1 serialization and isolated print engine"
+git push

@@ -16,49 +16,112 @@
 
 @media print {
   @page {
-    size: auto;
-    margin: 8mm 10mm;
+    size: A4 portrait;
+    margin: 6mm 8mm;
   }
 
-  /* 1. Hide the entire Angular SPA root */
+  /* 1. Neutralize html and body */
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 2. COMPLETELY HIDE the main Angular SPA tree */
   maranth-root {
     display: none !important;
+    height: 0 !important;
+    overflow: hidden !important;
   }
 
-  /* 2. Show ONLY the dedicated print portal */
-  #print-portal {
+  /* 3. Pull the print portal / isolated area to the absolute top of the print stream */
+  #print-portal,
+  #aade-isolated-print-area {
     display: block !important;
-    position: static !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
     width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
     background: #ffffff !important;
-    color: #000000 !important;
+    z-index: 999999 !important;
+  }
+
+  /* 4. If the print area is nested inside maranth-root (modal template pattern) */
+  /* We reveal ONLY the print element ancestors, hiding all sibling UI */
+  maranth-root:has(#aade-isolated-print-area),
+  maranth-root:has(#print-portal) {
+    display: block !important;
+    height: auto !important;
     overflow: visible !important;
   }
 
-  /* Clean print sheet styling */
-  #print-portal .print-sheet {
+  /* Hide app navigation, sidebars, headers, and backdrop overlays */
+  nav,
+  aside,
+  header,
+  .no-print,
+  .print-modal-backdrop > *:not(.print-modal-window),
+  .print-modal-window > *:not(#aade-isolated-print-area):not(#print-portal) {
+    display: none !important;
+  }
+
+  /* Reset the modal container so it does not take vertical page space */
+  .print-modal-backdrop,
+  .print-modal-window {
+    position: static !important;
     display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-shadow: none !important;
-    border: none !important;
     padding: 0 !important;
     margin: 0 !important;
-  }
-
-  #print-portal .thermal-receipt {
-    display: block !important;
-    width: 72mm !important;
-    max-width: 72mm !important;
-    margin: 0 auto !important;
-    box-shadow: none !important;
     border: none !important;
-    padding: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
-  /* Avoid mid-line breaks */
-  table, tr, td, th, canvas, img {
-    page-break-inside: avoid !important;
+  /* 5. Sheet geometry */
+  .print-sheet {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  /* Prevent row splitting */
+  tr, .avoid-break {
     break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .watermark,
+  .cancelled-stamp,
+  .cancelled-watermark {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) rotate(-35deg) !important;
+    transform-origin: center center !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+    max-width: 80% !important;
+  }
+
+  /* Force zero bottom margin on cancellation info banners */
+  .cancellation-banner,
+  .cancelled-meta {
+    margin-top: 2px !important;
+    margin-bottom: 2px !important;
+    padding: 2px 4px !important;
   }
 }

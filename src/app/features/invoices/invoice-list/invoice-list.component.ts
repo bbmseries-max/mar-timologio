@@ -2,8 +2,12 @@ import { Component, ChangeDetectionStrategy, signal, computed, inject, OnInit } 
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { LocalInvoiceRecord, TenantSettingsRecord } from '@core/models/database.models';
+import { PrintableInvoiceData } from '../invoice-print/invoice-print.component';
+import { MyDataService } from '@core/services/mydata.service';
 import { LocalDbService } from '../../../core/services/local-db.service';
 import { InvoicePrintComponent } from '../invoice-print/invoice-print.component';
+import { TenantIntegrationService } from '@core/services/tenant-integration.service';
 
 export type StatusFilterType = 'ALL' | 'TRANSMITTED' | 'CANCELLED' | 'DRAFT' | 'FAILED';
 
@@ -15,7 +19,9 @@ export type StatusFilterType = 'ALL' | 'TRANSMITTED' | 'CANCELLED' | 'DRAFT' | '
   templateUrl: './invoice-list.component.html'
 })
 export class InvoiceListComponent implements OnInit {
+  private readonly myDataService = inject(MyDataService);
   private readonly db = inject(LocalDbService);
+  private readonly tenantService = inject(TenantIntegrationService);
 
   // Raw data from Dexie
   public readonly allInvoices = signal<any[]>([]);
@@ -161,12 +167,41 @@ export class InvoiceListComponent implements OnInit {
   }
 
   public async onCancelInvoice(inv: any): Promise<void> {
-    if (!confirm(`Είστε βέβαιοι για την ακύρωση του παραστατικού ${inv.series}-${inv.documentNumber};`)) return;
+    if (!inv?.mark) {
+      alert(`Το παραστατικό δεν έχει έγκυρο MARK από την ΑΑΔΕ (είναι πρόχειρο ή δεν απεστάλη).`);
+      return;
+    }
+
+    const docRef = `${inv.series || 'DEV'}-${inv.documentNumber || inv.aa || 1}`;
+    if (!confirm(`Είστε βέβαιοι για την ακύρωση του παραστατικού ${docRef} (MARK: ${inv.mark}) στην ΑΑΔΕ;`)) {
+      return;
+    }
+
     this.isCancelling.update(state => ({ ...state, [inv.id]: true }));
+
     try {
-      // Call your cancel service method here...
-      // await this.myDataService.cancelInvoice(inv);
-      await this.loadInvoices();
+      // 1. Service call via injected myDataService (or this.myData)
+      const res = await this.myDataService.cancelInvoice(inv);
+
+      if (res.success && res.cancellationMark) {
+        // 2. Type-safe update on Dexie LocalInvoiceRecord
+        await (this.db as any).invoices.update(inv.id, {
+          transmissionStatus: 'CANCELLED',
+          status: 'cancelled',
+          cancellationMark: res.cancellationMark,
+          updatedAt: Date.now()
+        });
+
+        // 3. Reload list
+        await this.loadInvoices();
+        alert(`✅ Επιτυχής ακύρωση στην ΑΑΔΕ!\nΑριθμός Ακύρωσης (Cancellation MARK): ${res.cancellationMark}`);
+      } else {
+        const errMsg = res.errors?.join('\n') || 'Η ακύρωση απορρίφθηκε από την ΑΑΔΕ.';
+        alert(`❌ Αποτυχία ακύρωσης:\n${errMsg}`);
+      }
+    } catch (err: any) {
+      console.error('Cancel error:', err);
+      alert(`❌ Σφάλμα συστήματος κατά την ακύρωση: ${err?.message || err}`);
     } finally {
       this.isCancelling.update(state => ({ ...state, [inv.id]: false }));
     }
@@ -178,10 +213,78 @@ export class InvoiceListComponent implements OnInit {
     await this.loadInvoices();
   }
 
-  public viewInvoice(inv: any): void {
-    // Open preview using printable payload
-    this.selectedInvoiceForPrint.set(inv);
+  public viewInvoice(inv: LocalInvoiceRecord): void {
+  if (!inv) return;
+
+  let snapshot: any = {};
+  try {
+    snapshot = inv.payloadJson ? JSON.parse(inv.payloadJson) : {};
+  } catch (e) {
+    console.error('Failed to parse invoice payloadJson', e);
   }
+
+  // 1. Try to get issuer from the saved invoice snapshot first (most accurate for historic invoices)
+  const savedIssuer = snapshot.issuer || {};
+
+  // 2. Fallback to active tenant settings from service
+  const tenantSvc = this.tenantService as any;
+  const tenant: Partial<TenantSettingsRecord> = 
+    (typeof tenantSvc.settings === 'function' ? tenantSvc.settings() : null) ||
+    (typeof tenantSvc.tenantRecord === 'function' ? tenantSvc.tenantRecord() : null) ||
+    (typeof tenantSvc.currentTenantData === 'function' ? tenantSvc.currentTenantData() : null) ||
+    tenantSvc.currentTenant ||
+    {};
+
+  const printableData: PrintableInvoiceData = {
+    series: inv.series,
+    documentNumber: inv.documentNumber,
+    issueDate: inv.issueDate,
+    invoiceType: inv.invoiceType,
+    issuer: {
+      legalName: savedIssuer.legalName || tenant.legalName || 'ΜΑΡΑΝΘ ΜΟΝΟΠΡΟΣΩΠΗ ΙΚΕ',
+      tradeName: savedIssuer.tradeName || tenant.tradeName || '',
+      afm: savedIssuer.afm || tenant.afm || '067424104',
+      doy: savedIssuer.doy || tenant.doy || 'ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ',
+      branch: savedIssuer.branch ?? tenant.branch ?? 0,
+      address: savedIssuer.address || {
+        street: tenant.street || 'ΒΑΡΔΟΥΝΙΩΤΗ',
+        number: tenant.number || '11',
+        postalCode: tenant.postalCode || '11522',
+        city: tenant.city || 'ΑΘΗΝΑ'
+      },
+      phone: savedIssuer.phone || tenant.phone || '',
+      email: savedIssuer.email || tenant.email || ''
+    },
+    customer: snapshot.customer || snapshot.counterpart || {
+      legalName: inv.customerName || '—',
+      afm: inv.customerAfm || '',
+      doy: snapshot.counterpart?.doy || snapshot.customer?.doy || '',
+      address: snapshot.counterpart?.address || snapshot.customer?.address || {
+        street: 'Λ ΚΗΦΙΣΣΟΥ',
+        number: '40',
+        postalCode: '12133',
+        city: 'ΠΕΡΙΣΤΕΡΙ'
+      }
+    },
+    lines: snapshot.lines || [],
+    totals: snapshot.totals || {
+      totalNetValue: inv.totalNet,
+      totalVatAmount: inv.totalVat,
+      totalGrossValue: inv.totalGross,
+      totalWithheldAmount: 0,
+      totalFeesAmount: 0,
+      totalStampDutyAmount: 0,
+      totalOtherTaxesAmount: 0,
+      totalDeductionsAmount: 0
+    },
+    mark: inv.mark || '—',
+    uid: inv.uid || '—',
+    qrUrl: inv.qrUrl || '',
+    xmlPayload: snapshot.xmlPayload || ''
+  };
+
+  this.selectedInvoiceForPrint.set(printableData);
+}
 
   public closePrintModal(): void {
     this.selectedInvoiceForPrint.set(null);
