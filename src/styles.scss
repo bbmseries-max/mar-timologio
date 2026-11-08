@@ -5,7 +5,11 @@
   html, body {
     height: 100%;
     margin: 0;
+    /* Executive Maranth Canvas Background */
+    background-color: #f8fafc; /* Crisp slate-50 */
+    color: #0f172a;           /* Deep obsidian text */
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
   }
 }
 

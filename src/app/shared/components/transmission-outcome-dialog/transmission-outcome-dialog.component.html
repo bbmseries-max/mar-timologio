@@ -1,0 +1,83 @@
+@if (outcome(); as data) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+    <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden transform transition-all">
+      
+      <!-- HEADER BANNER -->
+      <div [class]="data.status === 'success' ? 'bg-emerald-600' : 'bg-rose-600'" class="p-6 text-white text-center">
+        @if (data.status === 'success') {
+          <div class="w-14 h-14 mx-auto mb-3 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold">
+            ✓
+          </div>
+          <h2 class="text-xl font-black tracking-tight">Επιτυχής Έκδοση & Διαβίβαση!</h2>
+          <p class="text-xs text-emerald-100 mt-1">Το παραστατικό κατοχυρώθηκε στην ΑΑΔΕ myDATA</p>
+        } @else {
+          <div class="w-14 h-14 mx-auto mb-3 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold">
+            ✕
+          </div>
+          <h2 class="text-xl font-black tracking-tight">Σφάλμα Διαβίβασης</h2>
+          <p class="text-xs text-rose-100 mt-1">Η ΑΑΔΕ απέρριψε το παραστατικό ή υπάρχει δικτυακό σφάλμα</p>
+        }
+      </div>
+
+      <!-- BODY CONTENT -->
+      <div class="p-6 space-y-4 text-xs text-slate-700">
+        @if (data.status === 'success') {
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 font-mono">
+            <div class="flex justify-between items-center text-slate-500">
+              <span>Τύπος:</span>
+              <span class="font-bold text-slate-900">{{ data.invoiceType }}</span>
+            </div>
+            <div class="flex justify-between items-center text-slate-500">
+              <span>Σειρά / Αριθμός:</span>
+              <span class="font-bold text-slate-900">{{ data.series }} - {{ data.documentNumber }}</span>
+            </div>
+            <div class="flex justify-between items-center text-slate-500">
+              <span>Ποσό:</span>
+              <span class="font-bold text-slate-950 text-sm">{{ data.grossTotal | number:'1.2-2' }} €</span>
+            </div>
+            <div class="border-t border-slate-200 pt-2 flex justify-between items-center">
+              <span class="text-emerald-700 font-bold">MARK:</span>
+              <span class="font-black text-slate-900 text-xs">{{ data.mark }}</span>
+            </div>
+          </div>
+        } @else {
+          <div class="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3.5 space-y-2">
+            <p class="font-bold">{{ data.errorMessage || 'Αποτυχία επικύρωσης στοιχείων.' }}</p>
+            @if (data.errorCode) {
+              <p class="font-mono text-[11px] text-rose-600">Κωδικός: {{ data.errorCode }}</p>
+            }
+            @if (data.errorDetails && data.errorDetails.length > 0) {
+              <ul class="list-disc list-inside text-[11px] text-rose-700 space-y-1">
+                @for (err of data.errorDetails; track $index) {
+                  <li>{{ err }}</li>
+                }
+              </ul>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- ACTIONS FOOTER -->
+      <div class="p-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row gap-2 justify-end">
+        @if (data.status === 'success') {
+          <button 
+            type="button" 
+            (click)="onGoToArchive(data)"
+            class="w-full sm:w-auto px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg transition-all cursor-pointer text-center text-xs shadow-xs"
+          >
+            Μετάβαση στο Αρχείο & Εκτύπωση →
+          </button>
+        } @else {
+          <button 
+            type="button" 
+            (click)="onDismiss()"
+            class="w-full sm:w-auto px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-lg transition-all cursor-pointer text-xs"
+          >
+            Επιστροφή στη Φόρμα για Διόρθωση
+          </button>
+        }
+      </div>
+
+    </div>
+  </div>
+}

@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { LocalDbService } from '@core/services/local-db.service';
 import { AuthTenantService } from '@core/services/auth-tenant.service';
 import { MyDataService } from '@core/services/mydata.service';
@@ -17,6 +17,7 @@ import {
   InvoicePrintComponent,
   PrintableInvoiceData,
 } from '../invoice-print/invoice-print.component';
+
 type FilterStatus = 'ALL' | 'TRANSMITTED' | 'DRAFT' | 'FAILED';
 
 @Component({
@@ -25,7 +26,30 @@ type FilterStatus = 'ALL' | 'TRANSMITTED' | 'DRAFT' | 'FAILED';
   imports: [CommonModule, FormsModule, RouterLink, InvoicePrintComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="max-w-7xl mx-auto p-4 sm:p-6 space-y-6 no-print">
+    <div class="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+      
+      <!-- Created Document Alert Banner -->
+      @if (highlightedId()) {
+        <div class="bg-emerald-50 border border-emerald-300 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+              ✓
+            </div>
+            <div>
+              <p class="text-xs font-bold text-emerald-900">Το παραστατικό εκδόθηκε και διαβιβάστηκε επιτυχώς!</p>
+              <p class="text-[11px] text-emerald-700">Προβάλλεται μόνο η νέα εγγραφή. Μπορείτε να την εκτυπώσετε απευθείας.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            (click)="clearHighlight()"
+            class="text-xs px-3 py-1.5 bg-white border border-emerald-300 hover:bg-emerald-100 text-emerald-800 rounded-lg font-semibold transition cursor-pointer"
+          >
+            Προβολή Όλων των Εγγραφών
+          </button>
+        </div>
+      }
+
       <!-- Header & Top Summary -->
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-5 gap-4">
         <div>
@@ -112,8 +136,12 @@ type FilterStatus = 'ALL' | 'TRANSMITTED' | 'DRAFT' | 'FAILED';
           >
             <option value="ALL">Όλοι οι Τύποι</option>
             <option value="1.1">1.1 - Τιμολόγιο Πώλησης</option>
+            <option value="1.2">1.2 - Ενδοκοινοτική Παράδοση</option>
             <option value="2.1">2.1 - Παροχή Υπηρεσιών</option>
-            <option value="9.3">9.3 - Δελτίο Αποστολής</option>
+            <option value="11.1">11.1 - Απόδειξη Λιανικής (ΑΛΠ)</option>
+            <option value="11.2">11.2 - Απόδειξη Παροχής (ΑΠΥ)</option>
+            <option value="9.1">9.1 - Δελτίο Αποστολής (Μη συνδεδεμένο)</option>
+            <option value="9.3">9.3 - Δελτίο Αποστολής (Συνοδευτικό)</option>
           </select>
         </div>
 
@@ -192,7 +220,6 @@ type FilterStatus = 'ALL' | 'TRANSMITTED' | 'DRAFT' | 'FAILED';
               <tbody class="divide-y divide-slate-100 font-sans">
                 @for (inv of filteredInvoices(); track inv.id) {
                   <tr class="hover:bg-slate-50/70 transition">
-                    <!-- Doc Series & Number -->
                     <td class="py-3 px-4">
                       <div class="font-bold font-mono text-slate-900 text-sm">
                         {{ inv.series }}-{{ inv.documentNumber }}
@@ -202,12 +229,10 @@ type FilterStatus = 'ALL' | 'TRANSMITTED' | 'DRAFT' | 'FAILED';
                       </span>
                     </td>
 
-                    <!-- Date -->
                     <td class="py-3 px-4 font-mono text-slate-600 text-xs">
                       {{ inv.issueDate }}
                     </td>
 
-                    <!-- Recipient -->
                     <td class="py-3 px-4">
                       <div class="font-bold text-slate-900 max-w-[200px] truncate">
                         {{ inv.customerName || '—' }}
@@ -217,7 +242,6 @@ type FilterStatus = 'ALL' | 'TRANSMITTED' | 'DRAFT' | 'FAILED';
                       </span>
                     </td>
 
-                    <!-- Values -->
                     <td class="py-3 px-4 text-right font-mono text-slate-700">
                       {{ inv.totalNet | number: '1.2-2' }} €
                     </td>
@@ -228,7 +252,6 @@ type FilterStatus = 'ALL' | 'TRANSMITTED' | 'DRAFT' | 'FAILED';
                       {{ inv.totalGross | number: '1.2-2' }} €
                     </td>
 
-                    <!-- Status Badge / MARK Link -->
                     <td class="py-3 px-4 text-center">
                       @if (inv.transmissionStatus === 'TRANSMITTED' && inv.mark) {
                         <div class="inline-flex flex-col items-center">
@@ -256,23 +279,20 @@ type FilterStatus = 'ALL' | 'TRANSMITTED' | 'DRAFT' | 'FAILED';
                       }
                     </td>
 
-                    <!-- Actions -->
                     <td class="py-3 px-4 text-center">
                       <div class="flex items-center justify-center gap-1.5">
-                        <!-- Repost/Retry if failed or draft -->
                         @if (inv.transmissionStatus !== 'TRANSMITTED') {
                           <button
-                            type="button"
-                            (click)="retryTransmission(inv)"
-                            [disabled]="retryingId() === inv.id"
-                            title="Επαναποστολή στο myDATA"
-                            class="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
-                          >
-                            <span>{{ retryingId() === inv.id ? '⏳' : '⚡' }}</span>
-                          </button>
+    type="button"
+    (click)="retryTransmission(inv)"
+    [disabled]="isRetrying(inv.id)"
+    title="Επαναποστολή στο myDATA"
+    class="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer disabled:opacity-50"
+  >
+    <span>{{ isRetrying(inv.id) ? '⏳' : '⚡' }}</span>
+  </button>
                         }
 
-                        <!-- Print / Duplicate Button -->
                         <button
                           type="button"
                           (click)="openPrintModal(inv)"
@@ -306,20 +326,48 @@ export class InvoiceArchiveComponent implements OnInit {
   private readonly db = inject(LocalDbService);
   private readonly auth = inject(AuthTenantService);
   private readonly myData = inject(MyDataService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   public readonly invoices = signal<LocalInvoiceRecord[]>([]);
   public readonly searchQuery = signal<string>('');
   public readonly selectedType = signal<string>('ALL');
   public readonly selectedStatus = signal<FilterStatus>('ALL');
+  public readonly highlightedId = signal<string | null>(null);
 
   public readonly retryingId = signal<string | null>(null);
 
-  // Print modal state
   public readonly showPrintModal = signal<boolean>(false);
   public readonly selectedPrintData = signal<PrintableInvoiceData | null>(null);
 
   async ngOnInit(): Promise<void> {
     await this.loadInvoices();
+
+    this.route.queryParams.subscribe(async (params) => {
+      const createdId = params['createdId'];
+      const shouldOpenPrint = params['openPrint'] === 'true';
+
+      if (createdId) {
+        this.highlightedId.set(String(createdId));
+
+        // Auto-open print modal for the newly minted invoice
+        if (shouldOpenPrint) {
+          const target = this.invoices().find((inv) => String(inv.id) === String(createdId));
+          if (target) {
+            await this.openPrintModal(target);
+          }
+        }
+      }
+    });
+  }
+
+  public clearHighlight(): void {
+    this.highlightedId.set(null);
+    this.router.navigate([], { queryParams: {} });
+  }
+
+  public isRetrying(id: unknown): boolean {
+    return this.retryingId() === (id != null ? String(id) : null);
   }
 
   public async loadInvoices(): Promise<void> {
@@ -327,30 +375,29 @@ export class InvoiceArchiveComponent implements OnInit {
     if (!tenantId) return;
 
     const list = await this.db.getAllInvoices(tenantId);
-    // Sort newest first by creation date or document number
     list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     this.invoices.set(list);
   }
 
-  /**
-   * Filtered items matching search term, document type, and transmission status
-   */
   public readonly filteredInvoices = computed(() => {
     const list = this.invoices();
+    const hlId = this.highlightedId();
+
+    if (hlId) {
+      return list.filter((inv) => String(inv.id) === hlId);
+    }
+
     const q = this.searchQuery().trim().toLowerCase();
     const type = this.selectedType();
     const status = this.selectedStatus();
 
     return list.filter((inv) => {
-      // 1. Status Filter
       if (status === 'TRANSMITTED' && inv.transmissionStatus !== 'TRANSMITTED') return false;
       if (status === 'FAILED' && inv.transmissionStatus !== 'FAILED') return false;
       if (status === 'DRAFT' && inv.transmissionStatus === 'TRANSMITTED') return false;
 
-      // 2. Type Filter
       if (type !== 'ALL' && inv.invoiceType !== type) return false;
 
-      // 3. Search Query
       if (q) {
         const fullDoc = `${inv.series}-${inv.documentNumber}`.toLowerCase();
         const afm = (inv.customerAfm || '').toLowerCase();
@@ -363,9 +410,6 @@ export class InvoiceArchiveComponent implements OnInit {
     });
   });
 
-  /**
-   * Turnover calculations
-   */
   public readonly totalsSummary = computed(() => {
     const list = this.filteredInvoices();
     const net = list.reduce((acc, i) => acc + (Number(i.totalNet) || 0), 0);
@@ -381,15 +425,16 @@ export class InvoiceArchiveComponent implements OnInit {
   public getDocTypeBadge(type: string): string {
     switch (type) {
       case '1.1': return '1.1 Τιμολόγιο Πώλησης';
+      case '1.2': return '1.2 Ενδοκοινοτική';
       case '2.1': return '2.1 Παροχή Υπηρεσιών';
-      case '9.3': return '9.3 Δελτίο Αποστολής';
+      case '11.1': return '11.1 ΑΛΠ Λιανική';
+      case '11.2': return '11.2 ΑΠΥ Παροχής';
+      case '9.1': return '9.1 Δελτίο Αποστολής';
+      case '9.3': return '9.3 Δελτίο Συνοδευτικό';
       default: return type;
     }
   }
 
-  /**
-   * Opens the existing print component with stored invoice data & AADE QR code
-   */
   public async openPrintModal(inv: LocalInvoiceRecord): Promise<void> {
     const tenantId = this.auth.currentTenantId();
     const settings = tenantId ? await this.db.getSettingsForTenant(tenantId) : null;
@@ -469,9 +514,6 @@ export class InvoiceArchiveComponent implements OnInit {
     this.showPrintModal.set(true);
   }
 
-  /**
-   * Retries submission to myDATA for unsubmitted or failed records
-   */
   public async retryTransmission(inv: LocalInvoiceRecord): Promise<void> {
     const id = inv.id != null ? String(inv.id) : null;
     if (!id) return;
@@ -486,13 +528,27 @@ export class InvoiceArchiveComponent implements OnInit {
         inv.transmissionStatus = 'TRANSMITTED';
         inv.updatedAt = Date.now();
 
-        await this.db.invoices.update(id, {
-          mark: res.mark,
-          uid: res.uid,
-          qrUrl: res.qrUrl,
-          transmissionStatus: 'TRANSMITTED',
-          updatedAt: inv.updatedAt,
-        });
+        const tenantId = inv.tenantId || this.auth.currentTenantId();
+        try {
+          await (this.db as any).invoices
+            .where('[tenantId+id]')
+            .equals([tenantId, inv.id])
+            .modify({
+              mark: res.mark,
+              uid: res.uid,
+              qrUrl: res.qrUrl,
+              transmissionStatus: 'TRANSMITTED',
+              updatedAt: inv.updatedAt,
+            });
+        } catch {
+          await (this.db as any).invoices.update(inv.id, {
+            mark: res.mark,
+            uid: res.uid,
+            qrUrl: res.qrUrl,
+            transmissionStatus: 'TRANSMITTED',
+            updatedAt: inv.updatedAt,
+          });
+        }
 
         await this.loadInvoices();
       } else {

@@ -14,7 +14,7 @@ import { Subject } from 'rxjs';
 import { GsisLookupService, GsisCompanyRecord } from '@core/services/gsis-lookup.service';
 import { takeUntil, debounceTime } from 'rxjs/operators';
 import { MyDataService } from '@core/services/mydata.service';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormArray, FormBuilder, ReactiveFormsModule, Validators, 
   AbstractControl, 
@@ -58,6 +58,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   private readonly myData = inject(MyDataService);
   private readonly fiscalDispatcher = inject(FiscalDispatcherService);
   private readonly serializer = inject(AadeSerializerService);
+  public readonly isSubmitting = signal<boolean>(false);
   private readonly db = inject(LocalDbService);
   public readonly auth = inject(AuthTenantService);
   private readonly cartBridge = inject(CartBridgeService);
@@ -68,6 +69,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
 
   public readonly gsisLoading = signal<boolean>(false);
   public readonly gsisError = signal<string | null>(null);
+  private readonly router = inject(Router);
 
   public readonly currentDraftId = signal<string | null>(crypto.randomUUID());
   public readonly autoSaveStatus = signal<string>('Έτοιμο');
@@ -81,6 +83,17 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   private handoverConsumed = false;
   public handoverReceived = false;
   readonly currentEnvironment = this.myData.currentEnvironment;
+
+  public get isMovementDocument(): boolean {
+    const type = this.currentDocType;
+    return type === '9.1' || type === '9.3' || type === '1.2';
+  }
+
+  // 3. Ensure isPureDispatch getter is public:
+  public get isPureDispatch(): boolean {
+    const type = this.currentDocType;
+    return type === '9.1' || type === '9.3';
+  }
 
   public readonly computedTotals = computed(() => {
   if (this.isPureDispatch) {
@@ -180,38 +193,6 @@ public readonly invoiceForm = this.fb.group({
 
   private get currentDocType(): string {
     return String(this.invoiceForm?.get('invoiceType')?.value ?? '').trim();
-  }
-
-  // Inside invoice-builder.component.ts:
-public triggerBrowserPrint(): void {
-  const printArea = document.getElementById('aade-isolated-print-area');
-  const printPortal = document.getElementById('print-portal');
-
-  if (printArea && printPortal) {
-    // 1. Copy the printable sheet into the clean top-level portal
-    printPortal.innerHTML = printArea.innerHTML;
-    
-    // 2. Trigger browser print
-    window.print();
-    
-    // 3. Clean up portal after print dialog closes
-    setTimeout(() => {
-      printPortal.innerHTML = '';
-    }, 1000);
-  } else {
-    // Fallback if portal element isn't in index.html
-    window.print();
-  }
-}
-
-  get isPureDispatch(): boolean {
-    const type = this.currentDocType;
-    return type === '9.1' || type === '9.3';
-  }
-
-  get isMovementDocument(): boolean {
-    const type = this.currentDocType;
-    return type === '9.1' || type === '9.3' || type === '1.2';
   }
 
   get customerAfmValue(): string {
@@ -572,11 +553,85 @@ private optionalAfmValidator() {
 
       await (this.db as any).invoices.put(draftRecord);
       this.autoSaveStatus.set('Αποθηκεύτηκε ως πρόχειρο!');
-      alert('Το πρόχειρο παραστατικό αποθηκεύτηκε επιτυχώς!');
     } catch (err: any) {
       console.error('Error saving manual draft:', err);
-      alert('Σφάλμα κατά την αποθήκευση του πρόχειρου: ' + (err.message || err));
     }
+  }
+
+  public async onOpenPreview(): Promise<void> {
+    if (this.invoiceForm.invalid) {
+      this.invoiceForm.markAllAsTouched();
+      this.checkFormValidity();
+      return;
+    }
+
+    const tenantId = this.auth?.currentTenantId?.() || 'tenant_minimarket';
+    let settings: any = typeof (this.db as any).getSettingsForTenant === 'function'
+      ? await (this.db as any).getSettingsForTenant(tenantId)
+      : await (this.db as any).getSettings?.(tenantId);
+
+    if (!settings?.afm) {
+      const all = await (this.db as any).settings?.toArray?.();
+      if (all && all.length > 0) settings = all[0];
+    }
+
+    const formVal: any = this.invoiceForm.getRawValue();
+    const totals = this.computedTotals();
+    const custRaw: any = formVal.customer || {};
+
+    const printablePayload: any = {
+      series: formVal.series || 'DEV',
+      documentNumber: Number(formVal.documentNumber) || 1,
+      issueDate: formVal.issueDate || new Date().toISOString().split('T')[0],
+      invoiceType: formVal.invoiceType || '1.1',
+      issuer: {
+        legalName: settings?.legalName || 'MARANTH TEST ENTERPRISE',
+        tradeName: settings?.tradeName || settings?.legalName || 'MARANTH TEST ENTERPRISE',
+        afm: settings?.afm || '067424104',
+        doy: settings?.doy || 'ΔΟΥ ΑΘΗΝΩΝ',
+        branch: 0,
+        address: {
+          street: settings?.street || 'Σταδίου',
+          number: settings?.number || '10',
+          postalCode: settings?.postalCode || '10564',
+          city: settings?.city || 'Αθήνα',
+        },
+        phone: settings?.phone || '',
+        email: settings?.email || '',
+      },
+      customer: {
+        id: (custRaw as any)?.id || 'cust-1',
+        legalName: custRaw.legalName || '—',
+        afm: custRaw.afm || '—',
+        doy: custRaw.doy || '—',
+        email: custRaw.email || '',
+        address: {
+          street: custRaw.street || '',
+          number: custRaw.number || '',
+          postalCode: custRaw.postalCode || '',
+          city: custRaw.city || '',
+        },
+      },
+      lines: this.lineItemsSignal(),
+      totals: {
+        totalNetValue: Number(totals.totalNetValue || 0),
+        totalVatAmount: Number(totals.totalVatAmount || 0),
+        totalWithheldAmount: 0,
+        totalFeesAmount: 0,
+        totalStampDutyAmount: 0,
+        totalOtherTaxesAmount: 0,
+        totalDeductionsAmount: 0,
+        totalGrossValue: Number(totals.totalGrossValue || 0),
+      },
+      mark: formVal.mark || 'ΠΡΟΕΠΙΣΚΟΠΗΣΗ',
+      uid: formVal.uid || 'PREVIEW-MODE-ONLY',
+      qrUrl: formVal.qrUrl || 'https://mydata.aade.gr/preview',
+      xmlPayload: '',
+      movement: this.isMovementDocument ? formVal.movement : undefined,
+    };
+
+    this.printableData.set(printablePayload);
+    this.showPrintModal.set(true);
   }
 
   private applyDefaultSeriesAndSeed(defaultSeries: string): void {
@@ -1327,154 +1382,111 @@ private optionalAfmValidator() {
     }
   }
 
-  public async onOpenPreview(): Promise<void> {
-    if (this.invoiceForm.invalid) {
-      this.invoiceForm.markAllAsTouched();
-      this.checkFormValidity();
-      alert('Παρακαλώ συμπληρώστε όλα τα απαιτούμενα πεδία.');
-      return;
-    }
-
-    const tenantId = this.auth?.currentTenantId?.() || 'tenant_minimarket';
-    let settings: any = typeof (this.db as any).getSettingsForTenant === 'function'
-      ? await (this.db as any).getSettingsForTenant(tenantId)
-      : await (this.db as any).getSettings?.(tenantId);
-
-    if (!settings?.afm) {
-      const all = await (this.db as any).settings?.toArray?.();
-      if (all && all.length > 0) settings = all[0];
-    }
-
-    const formVal: any = this.invoiceForm.getRawValue();
-    const totals = this.computedTotals();
-    const custRaw: any = formVal.customer || {};
-
-    const printablePayload: any = {
-      series: formVal.series || 'DEV',
-      documentNumber: Number(formVal.documentNumber) || 1,
-      issueDate: formVal.issueDate || new Date().toISOString().split('T')[0],
-      invoiceType: formVal.invoiceType || '1.1',
-      issuer: {
-        legalName: settings?.legalName || 'MARANTH TEST ENTERPRISE',
-        tradeName: settings?.tradeName || settings?.legalName || 'MARANTH TEST ENTERPRISE',
-        afm: settings?.afm || '067424104',
-        doy: settings?.doy || 'ΔΟΥ ΑΘΗΝΩΝ',
-        branch: 0,
-        address: {
-          street: settings?.street || 'Σταδίου',
-          number: settings?.number || '10',
-          postalCode: settings?.postalCode || '10564',
-          city: settings?.city || 'Αθήνα',
-        },
-        phone: settings?.phone || '',
-        email: settings?.email || '',
-      },
-      customer: {
-        id: (custRaw as any)?.id || 'cust-1',
-        legalName: custRaw.legalName || '—',
-        afm: custRaw.afm || '—',
-        doy: custRaw.doy || '—',
-        email: custRaw.email || '',
-        address: {
-          street: custRaw.street || '',
-          number: custRaw.number || '',
-          postalCode: custRaw.postalCode || '',
-          city: custRaw.city || '',
-        },
-      },
-      lines: this.lineItemsSignal(),
-      totals: {
-        totalNetValue: Number(totals.totalNetValue || 0),
-        totalVatAmount: Number(totals.totalVatAmount || 0),
-        totalWithheldAmount: 0,
-        totalFeesAmount: 0,
-        totalStampDutyAmount: 0,
-        totalOtherTaxesAmount: 0,
-        totalDeductionsAmount: 0,
-        totalGrossValue: Number(totals.totalGrossValue || 0),
-      },
-      mark: formVal.mark || 'ΠΡΟΕΠΙΣΚΟΠΗΣΗ',
-      uid: formVal.uid || 'PREVIEW-MODE-ONLY',
-      qrUrl: formVal.qrUrl || 'https://mydata.aade.gr/preview',
-      xmlPayload: '',
-      movement: this.isMovementDocument ? formVal.movement : undefined,
-    };
-
-    this.printableData.set(printablePayload);
-    this.showPrintModal.set(true);
-  }
-
 public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
-  try {
-    this.autoSaveStatus.set('Διαβίβαση σε εξέλιξη...');
+    try {
+      this.autoSaveStatus.set('Διαβίβαση σε εξέλιξη...');
 
-    // 1. Delegate transmission to FiscalDispatcherService
-    const result = await this.fiscalDispatcher.transmit(invoice);
+      // 1. Delegate transmission to FiscalDispatcherService
+      const result = await this.fiscalDispatcher.transmit(invoice);
 
-    if (result.success && result.mark) {
-      const invoiceId = invoice.id != null ? String(invoice.id) : null;
-      const officialQr =
-        result.qrUrl ??
-        (result.mark ? `https://mydataapidev.aade.gr/TimologioQR/QRInfo?q=${result.mark}` : '');
+      if (result.success && result.mark) {
+        const invoiceId = invoice.id != null ? String(invoice.id) : null;
+        const officialQr =
+          result.qrUrl ??
+          (result.mark ? `https://mydataapidev.aade.gr/TimologioQR/QRInfo?q=${result.mark}` : '');
 
-      let freshPersistedInvoice: LocalInvoiceRecord | undefined;
+        if (invoiceId) {
+          await this.db.invoices.update(invoiceId, {
+            mark: result.mark,
+            uid: result.uid,
+            qrUrl: officialQr,
+            providerSignature: result.providerSignature ?? undefined,
+            transmissionStatus: 'TRANSMITTED',
+            updatedAt: Date.now(),
+          });
+        }
 
-      if (invoiceId) {
-        // 1a. Update Dexie first with official transmission tags
-        await this.db.invoices.update(invoiceId, {
+        // Inform the user immediately by showing the completion modal
+        this.completedInvoice.set({
+          id: invoice.id,
+          series: invoice.series,
+          documentNumber: invoice.documentNumber,
           mark: result.mark,
-          uid: result.uid,
+          grossTotal: invoice.totalGross || this.computedTotals().totalGrossValue,
+          customerName: invoice.customerName || '—',
+          customerAfm: invoice.customerAfm || '—',
+          issueDate: invoice.issueDate,
           qrUrl: officialQr,
-          providerSignature: result.providerSignature ?? undefined,
-          transmissionStatus: 'TRANSMITTED',
-          updatedAt: Date.now(),
+          invoiceType: invoice.invoiceType,
         });
-
-        // 1b. Fetch freshly saved record straight from Dexie (identical to Arxio)
-        freshPersistedInvoice = await this.db.invoices.get(invoiceId);
-        this.autoSaveStatus.set(`Εκδόθηκε με επιτυχία! ΜΑΡΚ: ${result.mark}`);
+      } else {
+        const invoiceId = invoice.id != null ? String(invoice.id) : null;
+        if (invoiceId) {
+          await this.db.invoices.update(invoiceId, {
+            transmissionStatus: 'FAILED',
+            updatedAt: Date.now(),
+          });
+        }
+        this.autoSaveStatus.set(`Αποτυχία: ${result.error || 'Σφάλμα διαβίβασης'}`);
+        alert(`Απόρριψη διαβίβασης:\n${result.error || 'Άγνωστο σφάλμα επικύρωσης'}`);
       }
-
-      // 2. Open verified preview using the Dexie record (or ID)
-      await this.openVerifiedPreview(
-        freshPersistedInvoice || invoice,
-        result.mark,
-        result.uid,
-        officialQr
-      );
-
-      // 3. Prepare next sequential document number and fresh draft ID
-      const tenantId = this.auth.currentTenantId();
-      if (tenantId) {
-        const nextAa = await this.db.getNextDocumentNumber(tenantId, invoice.series);
-        this.currentDraftId.set(crypto.randomUUID());
-        this.invoiceForm.get('documentNumber')?.setValue(nextAa, { emitEvent: false });
-      }
-
-      // 4. Reset form for next entry (now safe because preview holds frozen Dexie snapshot)
-      this.linesArray.clear();
-      this.seedInitialLine();
-      this.invoiceForm.get('customer')?.reset();
-      this.invoiceForm.get('movement.addressTo')?.reset();
-      this.invoiceForm.get('movement.vehicleNumber')?.reset();
-    } else {
-      const invoiceId = invoice.id != null ? String(invoice.id) : null;
-      if (invoiceId) {
-        await this.db.invoices.update(invoiceId, {
-          transmissionStatus: 'FAILED',
-          updatedAt: Date.now(),
-        });
-      }
-      this.autoSaveStatus.set(`Αποτυχία: ${result.error || 'Σφάλμα διαβίβασης'}`);
-      alert(`Απόρριψη διαβίβασης:\n${result.error || 'Άγνωστο σφάλμα επικύρωσης'}`);
+    } catch (err: unknown) {
+      console.error('Network or gateway failure during fiscal transmission:', err);
+      this.autoSaveStatus.set('Σφάλμα δικτύου κατά την αποστολή');
     }
-  } catch (err: unknown) {
-    console.error('Network or gateway failure during fiscal transmission:', err);
-    this.autoSaveStatus.set('Σφάλμα δικτύου κατά την αποστολή');
   }
-}
 
-private syncLines(): void {
+  /** User clicked "Εκτύπωση Τώρα" */
+  public async onPrintCompletedInvoice(): Promise<void> {
+    const completed = this.completedInvoice();
+    if (!completed) return;
+    
+    // Fetch clean Dexie record and open print modal
+    const inv = await this.db.invoices.get(String(completed.id));
+    if (inv) {
+      await this.openVerifiedPreview(inv, completed.mark, undefined, completed.qrUrl);
+    }
+  }
+
+  /** User clicked "Έκδοση Νέου Παραστατικού" */
+  public async onStartNextInvoice(): Promise<void> {
+    const tenantId = this.auth.currentTenantId();
+    const series = this.invoiceForm.get('series')?.value || 'A';
+    
+    // 1. Advance to next document number
+    if (tenantId) {
+      const nextAa = await this.db.getNextDocumentNumber(tenantId, series);
+      this.currentDraftId.set(crypto.randomUUID());
+      this.invoiceForm.get('documentNumber')?.setValue(nextAa, { emitEvent: false });
+    }
+
+    // 2. Reset form
+    this.linesArray.clear();
+    this.seedInitialLine();
+    this.invoiceForm.get('customer')?.reset();
+    this.invoiceForm.get('movement.addressTo')?.reset();
+    this.invoiceForm.get('movement.vehicleNumber')?.reset();
+
+    // 3. Dismiss confirmation dialog
+    this.completedInvoice.set(null);
+  }
+
+  
+
+  public readonly completedInvoice = signal<{
+  id: string | number;
+  series: string;
+  documentNumber: string | number;
+  mark: string;
+  grossTotal: number;
+  customerName: string;
+  customerAfm: string;
+  issueDate: string;
+  qrUrl?: string;
+  invoiceType: string;
+} | null>(null);
+
+  private syncLines(): void {
     const isDeltio = this.isPureDispatch;
     const docType = String(this.currentDocType || '1.1').trim();
     

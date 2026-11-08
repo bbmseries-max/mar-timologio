@@ -1,34 +1,147 @@
 <app-environment-banner />
+<!-- ================================================================= -->
+<!-- MARANTH PRO EXECUTIVE COMPLETION MODAL                            -->
+<!-- ================================================================= -->
+@if (completedInvoice(); as done) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md no-print animate-fade-in">
+    <div class="bg-white rounded-2xl shadow-2xl border border-slate-200/80 max-w-lg w-full overflow-hidden text-slate-900 transition-all transform scale-100">
+      
+      <!-- Top Brand Strip & Header -->
+      <div class="bg-slate-950 px-6 py-5 text-white flex items-center justify-between border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-black text-base shadow-xs">
+            ✓
+          </div>
+          <div>
+            <h2 class="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+              <span>Επιτυχής Διαβίβαση myDATA</span>
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                AADE 200 OK
+              </span>
+            </h2>
+            <p class="text-[11px] text-slate-400">Επίσημη καταχώρηση παραστατικού στο μητρώο</p>
+          </div>
+        </div>
+        <span class="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider">Maranth Pro</span>
+      </div>
+
+      <!-- Content Area -->
+      <div class="p-6 space-y-4">
+        
+        <!-- MARK Spotlight Banner -->
+        <div class="bg-slate-900 text-white rounded-xl p-3.5 border border-slate-800 shadow-inner flex items-center justify-between gap-3">
+          <div>
+            <span class="block text-[9.5px] font-bold uppercase tracking-wider text-slate-400">Αριθμος Σημανσης (AADE MARK)</span>
+            <span class="block font-mono font-black text-emerald-400 text-lg tracking-wider select-all mt-0.5">
+              {{ done.mark }}
+            </span>
+          </div>
+          <div class="text-right">
+            <span class="block text-[9.5px] font-bold uppercase tracking-wider text-slate-400">Κατασταση</span>
+            <span class="inline-flex items-center gap-1 text-xs font-semibold text-emerald-300 mt-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              Ολοκληρώθηκε
+            </span>
+          </div>
+        </div>
+
+        <!-- Document Details Grid -->
+        <div class="bg-slate-50/75 border border-slate-200/80 rounded-xl p-4 font-mono text-xs space-y-2.5">
+          <div class="flex justify-between items-center text-slate-600">
+            <span class="font-sans text-[11px] font-medium text-slate-500">Παραστατικό:</span>
+            <span class="font-bold text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded text-[11.5px]">
+              {{ done.series }}-{{ done.documentNumber }} &bull; {{ done.invoiceType }}
+            </span>
+          </div>
+          <div class="flex justify-between items-center text-slate-600">
+            <span class="font-sans text-[11px] font-medium text-slate-500">Λήπτης / Επωνυμία:</span>
+            <span class="font-bold text-slate-900 truncate max-w-[210px] text-right" [title]="done.customerName">
+              {{ done.customerName }}
+            </span>
+          </div>
+          <div class="flex justify-between items-center text-slate-600">
+            <span class="font-sans text-[11px] font-medium text-slate-500">Α.Φ.Μ. Πελάτη:</span>
+            <span class="font-bold text-slate-800">{{ done.customerAfm }}</span>
+          </div>
+          <div class="flex justify-between items-center text-slate-600">
+            <span class="font-sans text-[11px] font-medium text-slate-500">Ημερομηνία:</span>
+            <span class="text-slate-800">{{ done.issueDate }}</span>
+          </div>
+          <div class="border-t border-slate-200/90 pt-2.5 flex justify-between items-center">
+            <span class="font-sans text-xs font-bold text-slate-700">Πληρωτέο Σύνολο:</span>
+            <span class="font-black text-slate-950 text-base">
+              {{ done.grossTotal | number:'1.2-2' }} €
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Action Footer -->
+      <div class="p-4 bg-slate-50 border-t border-slate-200/80 flex flex-col sm:flex-row gap-2.5">
+        <button
+          type="button"
+          (click)="onPrintCompletedInvoice()"
+          class="flex-1 py-2.5 px-4 bg-slate-950 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+        >
+          <span>🖨️</span>
+          <span>Εκτύπωση Τώρα (A4 / 80mm)</span>
+        </button>
+
+        <button
+          type="button"
+          (click)="onStartNextInvoice()"
+          class="py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-xs border border-slate-300 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+        >
+          <span>➕</span>
+          <span>Νέο Παραστατικό</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+}
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6 no-print">
-  <!-- Top Action Bar -->
-  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-5 gap-4">
-    <div>
-      <div class="flex items-center gap-2.5 flex-wrap">
-        <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Νέο Παραστατικό</h1>
-        <span class="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg font-mono font-medium bg-slate-100 text-slate-600 border border-slate-200">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+  
+  <!-- Executive Header Action Bar -->
+  <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    
+    <!-- Title & Status Metadata -->
+    <div class="space-y-1">
+      <div class="flex items-center gap-3 flex-wrap">
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight">Νέο Παραστατικό</h1>
+        
+        <!-- Auto-save Pill Badge -->
+        <span class="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20"></span>
           {{ autoSaveStatus() }}
         </span>
+
+        <!-- Phase B Pill Badge -->
         @if (isMovementDocument) {
-          <span class="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg font-semibold bg-amber-50 text-amber-800 border border-amber-300 shadow-xs">
-            <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
-            AADE Phase B: Ψηφιακή Διακίνηση
+          <span class="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-bold bg-amber-500/10 text-amber-900 border border-amber-300 shadow-2xs">
+            <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+            AADE Phase B &bull; Ψηφιακή Διακίνηση
           </span>
         }
       </div>
-      <p class="text-xs text-slate-500 mt-1">Maranth Invoice Pro &bull; AADE myDATA Gateway</p>
+      <p class="text-xs sm:text-sm font-semibold text-slate-500">
+        Maranth Invoice Pro <span class="text-slate-300 mx-1.5">|</span> myDATA Electronic Gateway
+      </p>
     </div>
 
-    <!-- Action Buttons -->
+    <!-- Action Buttons Group (Clean & High-Contrast) -->
     <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+      
       <!-- 1. Reset / Clear -->
       <button
         type="button"
         (click)="onResetForm()"
-        class="inline-flex items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-xs transition active:scale-95 cursor-pointer"
+        class="inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl text-[13px] font-bold text-slate-700 hover:text-rose-700 bg-white hover:bg-rose-50/60 border border-slate-300 hover:border-rose-300 shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+        title="Επαναφορά και καθαρισμός φόρμας"
       >
-        <span class="text-slate-400">↺</span>
+        <span class="text-slate-400 text-sm">↺</span>
         <span>Καθαρισμός</span>
       </button>
 
@@ -36,10 +149,11 @@
       <button
         type="button"
         (click)="onSaveDraftManually()"
-        class="inline-flex items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-200 shadow-xs transition active:scale-95 cursor-pointer"
+        class="inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl text-[13px] font-bold text-slate-800 hover:text-blue-700 bg-white hover:bg-blue-50/60 border border-slate-300 hover:border-blue-300 shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+        title="Αποθήκευση τοπικού πρόχειρου"
       >
-        <span class="text-slate-400">💾</span>
-        <span>Αποθήκευση Πρόχειρου</span>
+        <span class="text-blue-600 text-sm">💾</span>
+        <span>Πρόχειρο</span>
       </button>
 
       <!-- 3. Safe Preview (Before Transmission) -->
@@ -47,39 +161,55 @@
         type="button"
         (click)="onOpenPreview()"
         [disabled]="invoiceForm.invalid"
-        class="inline-flex items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-xs disabled:opacity-40 disabled:cursor-not-allowed transition active:scale-95 cursor-pointer"
+        class="inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl text-[13px] font-bold text-slate-800 hover:text-slate-950 bg-white hover:bg-slate-100 border border-slate-300 shadow-xs disabled:opacity-40 disabled:bg-slate-50 disabled:border-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed transition-all active:scale-[0.98] cursor-pointer"
+        title="Προεπισκόπηση εγγράφου"
       >
-        <span class="text-slate-400">👁️</span>
+        <span class="text-slate-600 text-sm">👁️</span>
         <span>Προεπισκόπηση</span>
       </button>
 
-      <!-- 4. Primary: Issue & Transmit to myDATA -->
+      <!-- 4. Primary Hero: Issue & Transmit to myDATA -->
       <button
         type="button"
         (click)="onSaveAndSubmit()"
-        [disabled]="invoiceForm.invalid"
-        class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm shadow-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition active:scale-95 cursor-pointer"
+        [disabled]="invoiceForm.invalid || isSubmitting()"
+        class="inline-flex items-center justify-center gap-2.5 h-11 px-5 rounded-xl text-sm font-black text-white bg-slate-950 hover:bg-blue-600 shadow-md shadow-slate-950/20 hover:shadow-blue-600/25 disabled:opacity-40 disabled:bg-slate-400 disabled:shadow-none disabled:cursor-not-allowed transition-all active:scale-[0.98] cursor-pointer"
       >
-        <span>⚡</span>
-        <span>Έκδοση & myDATA</span>
+        @if (isSubmitting()) {
+          <svg class="animate-spin -ml-0.5 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span>Διαβίβαση...</span>
+        } @else {
+          <span class="text-amber-400 text-sm">⚡</span>
+          <span>Έκδοση &amp; myDATA</span>
+        }
       </button>
+
     </div>
   </div>
 
   <form [formGroup]="invoiceForm" class="space-y-6">
-  <!-- Recipient & Document Info -->
+  <!-- Recipient & Document Info Grid -->
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    <!-- Customer Details Card -->
+    
+    <!-- LEFT: Customer Details Card (Spans 2 columns) -->
     <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-xs md:col-span-2 space-y-4">
-      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+      
+      <!-- Card Header with Badges & Contract Action -->
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
         <div class="flex items-center gap-2">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-700">Στοιχεία Πελάτη / Λήπτη</h2>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-slate-900"></span>
+            Στοιχεία Πελάτη / Λήπτη
+          </h2>
 
           @if (customerAfmValue && isAfmValid) {
             <button
               type="button"
               (click)="openContractModal()"
-              class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md transition cursor-pointer"
+              class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition active:scale-95 cursor-pointer shadow-2xs"
               title="Δημιουργία Ιδιωτικού Συμφωνητικού SaaS"
             >
               <span>📄</span>
@@ -87,6 +217,215 @@
             </button>
           }
         </div>
+
+        @if (customerAfmValue) {
+          @if (isAfmValid) {
+            <span class="text-xs font-bold text-emerald-600 flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              ✓ Έγκυρο Α.Φ.Μ.
+            </span>
+          } @else if (isAfmInvalid) {
+            <span class="text-xs font-bold text-rose-600 flex items-center gap-1 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+              ✕ Μη έγκυρο Α.Φ.Μ.
+            </span>
+          }
+        }
+      </div>
+
+      <div formGroupName="customer" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- AFM Input & GSIS Lookup Button Group -->
+        <div class="relative">
+          <label class="block text-xs font-bold text-slate-700 mb-1">
+            Α.Φ.Μ. <span class="text-rose-500">*</span>
+          </label>
+          <div class="flex rounded-lg shadow-2xs">
+            <input
+              type="text"
+              formControlName="afm"
+              maxlength="9"
+              placeholder="π.χ. 012345678"
+              (keydown.enter)="$event.preventDefault(); triggerGsisLookup()"
+              class="flex-1 min-w-0 rounded-l-lg border-slate-300 text-sm px-3 py-2 border font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+            />
+            <button
+              type="button"
+              (click)="triggerGsisLookup()"
+              [disabled]="gsisLoading() || !afmControl?.value"
+              class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white transition-all bg-blue-600 rounded-r-lg hover:bg-blue-700 active:scale-95 focus:outline-hidden disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
+            >
+              @if (gsisLoading()) {
+                <svg
+                  class="w-3.5 h-3.5 text-white animate-spin"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              } @else {
+                <svg
+                  class="w-3.5 h-3.5 text-white/90"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                </svg>
+              }
+              <span>{{ gsisLoading() ? 'Αναζήτηση...' : 'Εύρεση ΑΑΔΕ' }}</span>
+            </button>
+          </div>
+
+          <!-- Error Alert Banner -->
+          @if (gsisError()) {
+            <div class="flex items-start gap-1.5 p-2 mt-1.5 text-xs font-semibold text-rose-800 border border-rose-200 rounded-lg bg-rose-50">
+              <span class="text-rose-600 font-bold">!</span>
+              <span>{{ gsisError() }}</span>
+            </div>
+          }
+
+          <!-- Local Dexie Customer Search Autocomplete Dropdown -->
+          @if (customerResults().length > 0) {
+            <div class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-40 max-h-52 overflow-y-auto divide-y divide-slate-100">
+              @for (cust of customerResults(); track cust.id) {
+                <button
+                  type="button"
+                  (click)="selectCustomer(cust)"
+                  class="w-full px-3.5 py-2.5 text-left hover:bg-indigo-50/70 transition flex items-center justify-between text-xs cursor-pointer"
+                >
+                  <div>
+                    <p class="font-bold text-slate-900">{{ cust.legalName }}</p>
+                    <p class="text-[10px] text-slate-500 font-mono">ΑΦΜ: {{ cust.afm }} | ΔΟΥ: {{ cust.doy || '—' }}</p>
+                  </div>
+                  <span class="text-[11px] text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded">Επιλογή</span>
+                </button>
+              }
+            </div>
+          }
+
+          @if (isAfmInvalid) {
+            <span class="text-xs font-semibold text-rose-600 mt-1 block">Μη έγκυρο Α.Φ.Μ. (Modulo 11)</span>
+          }
+        </div>
+
+        <!-- Legal Name Input -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">
+            Επωνυμία <span class="text-rose-500">*</span>
+          </label>
+          <input
+            type="text"
+            formControlName="legalName"
+            placeholder="Επωνυμία ή Ονοματεπώνυμο"
+            class="w-full rounded-lg border-slate-300 text-sm px-3 py-2 border font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition shadow-2xs"
+          />
+        </div>
+
+        <!-- DOY Input -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Δ.Ο.Υ.</label>
+          <input
+            type="text"
+            formControlName="doy"
+            placeholder="π.χ. ΔΟΥ ΑΘΗΝΩΝ"
+            class="w-full rounded-lg border-slate-300 text-sm px-3 py-2 border font-medium text-slate-900 shadow-2xs"
+          />
+        </div>
+
+        <!-- Email Input -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Email Παραλήπτη</label>
+          <input
+            type="email"
+            formControlName="email"
+            placeholder="billing@company.gr"
+            class="w-full rounded-lg border-slate-300 text-sm px-3 py-2 border font-medium text-slate-900 shadow-2xs"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Document Series & Type Card (Spans 1 column) -->
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+      <div class="border-b border-slate-100 pb-3">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-slate-900"></span>
+          Στοιχεία Σειράς &amp; Τύπου
+        </h2>
+      </div>
+
+      <div class="space-y-3">
+        <!-- Invoice Type Selector -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">
+            Τύπος Παραστατικού <span class="text-rose-500">*</span>
+          </label>
+          <select
+            formControlName="invoiceType"
+            class="w-full rounded-lg border-slate-300 text-xs px-3 py-2.5 border bg-sky focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold text-slate-800 shadow-2xs cursor-pointer"
+          >
+            <optgroup label="Τιμολόγηση &amp; Παροχή (B2B)">
+              <option value="1.1">1.1 — Τιμολόγιο Πώλησης</option>
+              <option value="2.1">2.1 — Τιμολόγιο Παροχής Υπηρεσιών</option>
+            </optgroup>
+
+            <optgroup label="Λιανικές Συναλλαγές (B2C)">
+              <option value="11.1">11.1 — Απόδειξη Λιανικής Πώλησης (ΑΛΠ)</option>
+              <option value="11.2">11.2 — Απόδειξη Παροχής Υπηρεσιών (ΑΠΥ)</option>
+            </optgroup>
+
+            <optgroup label="Ψηφιακή Διακίνηση (Phase B)">
+              <option value="9.3">9.3 — Αυτόνομο Δελτίο Αποστολής</option>
+              <option value="9.1">9.1 — Συσχετιζόμενο Δελτίο Αποστολής</option>
+              <option value="1.2">1.2 — Τιμολόγιο Πώλησης / Δελτίο Διακίνησης</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <!-- Series & Auto Number -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Σειρά</label>
+            <input
+              type="text"
+              formControlName="series"
+              placeholder="π.χ. ΤΠΥ"
+              class="w-full rounded-lg border-slate-300 text-sm px-3 py-2 border uppercase font-mono font-black text-slate-900 focus:ring-indigo-500 focus:border-indigo-500 shadow-2xs"
+            />
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-slate-700">Αριθμός</label>
+              <span class="text-[10px] text-indigo-700 font-bold font-mono bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200">Auto</span>
+            </div>
+            <input
+              type="number"
+              formControlName="documentNumber"
+              [readOnly]="true"
+              tabindex="-1"
+              (keydown)="$event.preventDefault()"
+              (wheel)="$event.preventDefault()"
+              class="w-full rounded-lg border-slate-200 text-sm px-3 py-2 border font-mono font-black bg-slate-100 text-slate-700 cursor-not-allowed select-none focus:outline-hidden focus:ring-0 shadow-2xs"
+            />
+          </div>
+        </div>
+
+        <!-- Issue Date -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Ημερομηνία Έκδοσης</label>
+          <input 
+            type="date" 
+            formControlName="issueDate" 
+            class="w-full rounded-lg border-slate-300 text-xs px-3 py-2 border font-mono font-medium text-slate-800 shadow-2xs" 
+          />
+        </div>
+      </div>
+    </div>
+
+  </div>
+      
 
         @if (customerAfmValue) {
           @if (isAfmValid) {
@@ -99,7 +438,7 @@
             </span>
           }
         }
-      </div>
+    
 
       <div formGroupName="customer" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <!-- AFM Input & GSIS Lookup Button Group -->
@@ -205,72 +544,7 @@
           />
         </div>
       </div>
-    </div>
-
-    <!-- Document Series & Type -->
-    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-700">Στοιχεία Σειράς</h2>
-      <div class="space-y-3">
-        <div>
-          <label class="block text-xs font-semibold text-slate-700">
-            Τύπος Παραστατικού <span class="text-rose-500">*</span>
-          </label>
-         <select
-  formControlName="invoiceType"
-  class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-semibold text-slate-800"
->
-  <optgroup label="Τιμολόγηση &amp; Παροχή (B2B)">
-    <option value="1.1">1.1 — Τιμολόγιο Πώλησης</option>
-    <option value="2.1">2.1 — Τιμολόγιο Παροχής Υπηρεσιών</option>
-  </optgroup>
-
-  <optgroup label="Λιανικές Συναλλαγές (B2C)">
-    <option value="11.1">11.1 — Απόδειξη Λιανικής Πώλησης (ΑΛΠ)</option>
-    <option value="11.2">11.2 — Απόδειξη Παροχής Υπηρεσιών (ΑΠΥ)</option>
-  </optgroup>
-
-  <optgroup label="Ψηφιακή Διακίνηση (Phase B)">
-    <option value="9.3">9.3 — Αυτόνομο Δελτίο Αποστολής</option>
-    <option value="9.1">9.1 — Συσχετιζόμενο Δελτίο Αποστολής</option>
-    <option value="1.2">1.2 — Τιμολόγιο Πώλησης / Δελτίο Διακίνησης</option>
-  </optgroup>
-</select>
-        </div>
-
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">Σειρά</label>
-            <input
-              type="text"
-              formControlName="series"
-              placeholder="π.χ. ΤΠΥ"
-              class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border uppercase font-mono font-bold focus:ring-indigo-500 focus:border-indigo-500"
-            />
-          </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-medium text-slate-600">Αριθμός (Α/Α)</label>
-              <span class="text-[10px] text-indigo-600 font-semibold font-mono">Auto</span>
-            </div>
-            <input
-              type="number"
-              formControlName="documentNumber"
-              [readOnly]="true"
-              tabindex="-1"
-              (keydown)="$event.preventDefault()"
-              (wheel)="$event.preventDefault()"
-              class="w-full rounded-md border-slate-200 text-sm px-3 py-2 border font-mono font-bold bg-slate-100 text-slate-700 cursor-not-allowed select-none focus:outline-hidden focus:ring-0"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-medium text-slate-600 mb-1">Ημερομηνία</label>
-          <input type="date" formControlName="issueDate" class="w-full rounded-md border-slate-300 text-sm px-3 py-2 border" />
-        </div>
-      </div>
-    </div>
-  </div>
+ 
 
   <!-- GOODS MOVEMENT PANEL (Rendered for 1.2, 9.1, and 9.3) -->
   @if (isMovementDocument) {
@@ -556,54 +830,56 @@
   </div>
 </form>
 
- <!-- Inside your print modal wrapper in invoice-builder.component.html -->
+<!-- SAFE VERIFIED PREVIEW MODAL (When clicking "Προεπισκόπηση") -->
 @if (showPrintModal() && printableData()) {
-  <!-- 1. ADD 'print-modal-backdrop' HERE -->
-  <div class="print-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/70 backdrop-blur-xs no-print"
        (click)="showPrintModal.set(false)"
        role="dialog"
        aria-modal="true">
     
-    <!-- 2. ADD 'print-modal-window' HERE -->
-    <div class="print-modal-window relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl p-6 sm:p-8 flex flex-col"
+    <div class="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-slate-100 rounded-2xl shadow-2xl p-4 sm:p-6 flex flex-col border border-slate-200"
          (click)="$event.stopPropagation()">
       
-      <!-- Top header bar: add 'no-print' class so your global CSS hides it -->
-      <div class="no-print flex items-center justify-between border-b pb-4 mb-6">
+      <!-- Top header bar -->
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3 mb-4 bg-white -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 p-4 rounded-t-2xl shadow-2xs">
         <div>
-          <h3 class="text-xl font-bold text-slate-800">
+          <h3 class="text-base font-bold text-slate-900 font-mono">
             {{ printableData()?.series }} - {{ printableData()?.documentNumber }}
           </h3>
-          <p class="text-xs text-slate-500 font-mono">
-            ΜΑΡΚ: {{ printableData()?.mark }}
+          <p class="text-[11px] text-slate-500 font-mono">
+            Προεπισκόπηση Εγγράφου &bull; {{ printableData()?.invoiceType }}
           </p>
         </div>
 
-        <div class="flex items-center gap-2">
-          <button type="button"
-                  (click)="triggerBrowserPrint()"
-                  class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-sm">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-            Εκτύπωση
-          </button>
-          
-          <button type="button"
-                  (click)="showPrintModal.set(false)"
-                  class="p-2 text-slate-400 hover:text-slate-700 rounded-xl">
-            ✕
-          </button>
-        </div>
+        <button type="button"
+                (click)="showPrintModal.set(false)"
+                class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-bold transition cursor-pointer">
+          ✕
+        </button>
       </div>
 
-      <!-- Target print container with matching ID -->
-      <div id="aade-isolated-print-area">
-        <maranth-invoice-print [invoice]="printableData()!" />
-      </div>
+      <!-- Live Child Print Component with its own verified print engine -->
+      <maranth-invoice-print [invoice]="printableData()!" />
 
     </div>
   </div>
+}
+
+<!-- EXCEL / CSV IMPORT MODAL -->
+@if (showImportModal()) {
+  <maranth-product-import-modal
+    (close)="showImportModal.set(false)"
+    (imported)="onProductsImported($event)"
+  ></maranth-product-import-modal>
+}
+
+<!-- CONTRACT MODAL -->
+@if (selectedCustomerForContract()) {
+  <maranth-contract-agreement
+    [customer]="selectedCustomerForContract()!"
+    [initialTerms]="{ setupFee: 50, monthlyFee: 29, durationMonths: 12 }"
+    (close)="selectedCustomerForContract.set(null)"
+  ></maranth-contract-agreement>
 }
 
   <!-- EXCEL / CSV IMPORT MODAL -->

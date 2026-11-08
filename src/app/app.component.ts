@@ -43,83 +43,135 @@ import * as Sentry from '@sentry/angular';
     }
 
     <!-- Top Header -->
-    <header class="bg-white/90 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        
-        <div class="flex items-center gap-6">
-          <a routerLink="/invoices/new" class="flex items-center gap-2.5 group">
-            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black flex items-center justify-center text-sm shadow-sm shadow-blue-500/20 group-hover:scale-105 transition-transform">
-              M
-            </div>
-            <div>
-              <span class="text-sm font-bold tracking-tight text-slate-900 block leading-tight">Maranth Hub</span>
-              <span class="text-[10px] font-semibold text-blue-600 block leading-none truncate max-w-[140px] sm:max-w-[200px]">
-                {{ auth.activeTenant()?.name }}
-              </span>
-            </div>
-          </a>
-
-          <nav class="hidden sm:flex items-center gap-1 text-xs font-semibold">
-            @if (auth.canIssueInvoices()) {
-              <a
-                routerLink="/invoices/new"
-                routerLinkActive="bg-blue-50 text-blue-700"
-                class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 transition"
-              >
-                + Έκδοση
-              </a>
-            }
-            <a
-              routerLink="/invoices"
-              routerLinkActive="bg-blue-50 text-blue-700"
-              class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 transition"
-            >
-              Αρχείο
-            </a>
-            <a
-  routerLink="/invoices/archive"
-  routerLinkActive="bg-indigo-50 text-indigo-700 font-bold border-indigo-200"
-  class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
->
-  📋 Αρχείο Παραστατικών
-</a>
-            @if (auth.featureFlags().enableGoodsMovement && auth.canIssueInvoices()) {
-              <a
-                routerLink="/delivery-notes"
-                routerLinkActive="bg-blue-50 text-blue-700"
-                class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 transition flex items-center gap-1.5"
-              >
-                <span>Δελτία Αποστολής</span>
-                <span class="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold border border-amber-200">Van</span>
-              </a>
-            }
-          </nav>
+    <header class="sticky top-0 z-40 w-full bg-slate-950 text-white border-b border-slate-800 shadow-md backdrop-blur-md no-print">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+    
+    <!-- BRAND / LOGO & TENANT INFO -->
+    <div class="flex items-center gap-6">
+      <a routerLink="/invoices/new" class="flex items-center gap-3 group cursor-pointer">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-black text-white text-base shadow-sm ring-1 ring-white/20 group-hover:scale-105 transition-transform">
+          M
         </div>
-
-        <div class="flex items-center gap-3">
-          <span class="hidden md:inline-block px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-mono">
-            Α.Φ.Μ.: {{ auth.activeTenant()?.fiscalIdentity?.afm }}
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-black text-sm sm:text-base tracking-tight text-white uppercase leading-tight">
+              Maranth Hub
+            </span>
+            <span class="text-[9px] font-mono font-bold bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-500/30">
+              ERP
+            </span>
+          </div>
+          <span class="text-[11px] font-semibold text-slate-400 block leading-none truncate max-w-[150px] sm:max-w-[220px] mt-0.5" [title]="auth.activeTenant()?.name || ''">
+            {{ auth.activeTenant()?.name || 'Επιχείρηση' }}
           </span>
-
-          <a
-            routerLink="/settings"
-            routerLinkActive="text-blue-600 bg-blue-50"
-            class="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition text-xs"
-            title="Ρυθμίσεις"
-          >
-            ⚙️
-          </a>
-          <button
-            type="button"
-            (click)="auth.logout()"
-            class="text-xs text-rose-600 hover:text-rose-700 font-semibold px-2.5 py-1.5 rounded-lg hover:bg-rose-50 transition"
-          >
-            Έξοδος
-          </button>
         </div>
+      </a>
 
-      </div>
-    </header>
+      <!-- DESKTOP NAVIGATION MENU -->
+      <nav class="hidden md:flex items-center gap-1.5">
+        @if (auth.canIssueInvoices()) {
+          <a
+            routerLink="/invoices/new"
+            routerLinkActive="bg-white/10 text-white font-bold border-white/20 shadow-xs"
+            class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <span class="text-amber-400 text-sm">⚡</span>
+            <span>ΕΚΔΟΣΗ</span>
+          </a>
+        }
+
+        <a
+          routerLink="/invoices"
+          routerLinkActive="bg-white/10 text-white font-bold border-white/20 shadow-xs"
+          class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent transition-all flex items-center gap-1.5 cursor-pointer"
+        >
+          <span class="text-slate-400 text-sm">📋</span>
+          <span>ΑΡΧΕΙΟ Παραστατικών</span>
+        </a>
+
+        @if (auth.featureFlags().enableGoodsMovement && auth.canIssueInvoices()) {
+          <a
+            routerLink="/delivery-notes"
+            routerLinkActive="bg-white/10 text-white font-bold border-white/20 shadow-xs"
+            class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <span class="text-slate-400 text-sm">🚚</span>
+            <span>ΔΕΛΤΙΑ Διακίνησης</span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              Van
+            </span>
+          </a>
+        }
+      </nav>
+    </div>
+
+    <!-- RIGHT UTILITY CONTROLS -->
+    <div class="flex items-center gap-2.5 sm:gap-3">
+      <!-- Tenant AFM Badge -->
+      @if (auth.activeTenant()?.fiscalIdentity?.afm) {
+        <div class="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300 shadow-2xs">
+          <span class="text-slate-500 uppercase font-sans text-[10px] font-bold">ΑΦΜ:</span>
+          <span class="font-bold text-white select-all">{{ auth.activeTenant()?.fiscalIdentity?.afm }}</span>
+        </div>
+      }
+
+      <!-- Settings Icon Button -->
+      <a
+        routerLink="/settings"
+        routerLinkActive="bg-white/10 text-white border-white/20 shadow-xs"
+        class="h-10 w-10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 border border-slate-800/80 rounded-xl transition-all cursor-pointer"
+        title="Ρυθμίσεις Συστήματος"
+      >
+        <span class="text-base leading-none">⚙️</span>
+      </a>
+
+      <!-- Logout Button -->
+      <button
+        type="button"
+        (click)="auth.logout()"
+        class="h-10 px-3.5 rounded-xl text-xs font-bold text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-all active:scale-[0.98] cursor-pointer flex items-center gap-1.5"
+      >
+        <span class="text-xs">🚪</span>
+        <span>Έξοδος</span>
+      </button>
+    </div>
+
+  </div>
+
+  <!-- MOBILE SUB-NAVIGATION BAR (Visible on screens < 768px) -->
+  <nav class="md:hidden flex items-center justify-around border-t border-slate-800/80 bg-slate-950 px-2 py-2">
+    @if (auth.canIssueInvoices()) {
+      <a
+        routerLink="/invoices/new"
+        routerLinkActive="text-white font-bold bg-white/10 border-white/20"
+        class="flex-1 flex flex-col items-center justify-center py-1.5 px-2 rounded-lg text-slate-400 hover:text-white transition-all text-[11px] border border-transparent"
+      >
+        <span class="text-sm">⚡</span>
+        <span>ΕΚΔΟΣΗ</span>
+      </a>
+    }
+
+    <a
+      routerLink="/invoices/archive"
+      routerLinkActive="text-white font-bold bg-white/10 border-white/20"
+      class="flex-1 flex flex-col items-center justify-center py-1.5 px-2 rounded-lg text-slate-400 hover:text-white transition-all text-[11px] border border-transparent"
+    >
+      <span class="text-sm">📋</span>
+      <span>ΑΡΧΕΙΟ</span>
+    </a>
+
+    @if (auth.featureFlags().enableGoodsMovement && auth.canIssueInvoices()) {
+      <a
+        routerLink="/delivery-notes"
+        routerLinkActive="text-white font-bold bg-white/10 border-white/20"
+        class="flex-1 flex flex-col items-center justify-center py-1.5 px-2 rounded-lg text-slate-400 hover:text-white transition-all text-[11px] border border-transparent"
+      >
+        <span class="text-sm">🚚</span>
+        <span>ΔΕΛΤΙΑ</span>
+      </a>
+    }
+  </nav>
+</header>
 
     <main class="flex-1 pb-12">
       <router-outlet></router-outlet>
