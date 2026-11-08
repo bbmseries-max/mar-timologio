@@ -25,13 +25,29 @@ export interface ExternalReturnItem {
 }
 
 export interface ExternalDocumentHandover {
+  documentType?: '1.1' | '2.1' | '9.3' | '11.1' | '11.2';
+  items: Array<{
+    description: string;
+    quantity: number;
+    measurementUnit?: number;
+    price?: number;
+    vatRate?: number;
+    barcode?: string;
+  }>;
+  customer?: any;
+  supplier?: any;
+  movement?: {
+    movePurpose?: number;
+    vehicleNumber?: string;
+    dispatchDateTime?: string;
+    correlatedMark?: string;
+    addressFrom?: any;
+    addressTo?: any;
+  };
   version?: string;
   tenantId?: string;
   messageId?: string;
-  documentType?: string;
-  supplier: ExternalHandoverSupplier;
   transport?: ExternalHandoverTransport;
-  items: ExternalReturnItem[];
 }
 
 export interface HandoverAck {

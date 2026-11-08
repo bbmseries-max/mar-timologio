@@ -1,620 +1,146 @@
-import { Component, ChangeDetectionStrategy, input, output, signal, computed } from '@angular/core';
+import { Component, ViewChild, ElementRef, inject, input, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { QrCodeComponent } from '../../../shared/components/qr-code/qr-code.component';
-import {
-  InvoiceLineItem,
-  InvoiceTotals,
-  Customer,
-  GoodsMovementData,
-} from '../../../core/models/aade.models';
+import { InvoicePrintEngineService } from '@core/services/invoice-print-engine.service';
+
+export interface PrintableVatBreakdown {
+  vatPercentage: number;
+  netValue: number;
+  vatAmount: number;
+}
+
+export interface PrintableAddress {
+  street?: string;
+  number?: string;
+  postalCode?: string;
+  city?: string;
+  [key: string]: any;
+}
 
 export interface PrintableInvoiceData {
   series: string;
-  documentNumber: number;
+  documentNumber: number | string;
   issueDate: string;
-  invoiceType: string;
-  issuer: {
-    legalName: string;
+  invoiceType?: string;
+  status?: string;
+  isCancelled?: boolean;
+  issuer?: {
+    legalName?: string;
     tradeName?: string;
-    afm: string;
+    afm?: string;
     doy?: string;
-    branch?: number;
+    activity?: string;
+    branch?: number | string;
     address?: {
-      street: string;
-      number: string;
-      postalCode: string;
-      city: string;
+      street?: string;
+      number?: string;
+      postalCode?: string;
+      city?: string;
+      [key: string]: any;
     };
     phone?: string;
     email?: string;
-  };
-  customer: Customer;
-  lines: InvoiceLineItem[];
-  totals: InvoiceTotals;
-  mark: string;
-  uid: string;
-  qrUrl: string;
+    [key: string]: any;
+  } | any;
+  customer?: {
+    id?: string;
+    legalName?: string;
+    tradeName?: string;
+    afm?: string;
+    doy?: string;
+    doyDescr?: string;
+    email?: string;
+    phone?: string;
+    address?: {
+      street?: string;
+      number?: string;
+      postalCode?: string;
+      city?: string;
+      [key: string]: any;
+    };
+    [key: string]: any;
+  } | any;
+  lines: Array<{
+    lineNumber?: number;
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    discountPercentage?: number;
+    netValue: number;
+    vatPercentage?: number;
+    totalValue: number;
+    measurementUnit?: string | number;
+    unitMeasurement?: string | number;
+    [key: string]: any;
+  }>;
+  totals?: {
+    totalNetValue: number;
+    totalVatAmount: number;
+    totalWithheldAmount?: number;
+    totalFeesAmount?: number;
+    totalStampDutyAmount?: number;
+    totalOtherTaxesAmount?: number;
+    totalDeductionsAmount?: number;
+    totalGrossValue: number;
+    vatBreakdowns?: any[];
+    [key: string]: any;
+  } | any;
+  mark?: string;
+  uid?: string;
+  qrUrl?: string;
   xmlPayload?: string;
-  movement?: GoodsMovementData;
+  movement?: any;
+  providerSignature?: string;
+  [key: string]: any;
 }
-
-type PrintLayoutMode = 'a4' | 'thermal80' | 'xml';
 
 @Component({
   selector: 'maranth-invoice-print',
   standalone: true,
-  imports: [CommonModule, QrCodeComponent],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <!-- Root Overlay -->
-    <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6 overflow-y-auto print-modal-backdrop">
-      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[94vh] flex flex-col overflow-hidden print-modal-window">
-        
-        <!-- Modal Toolbar: Hidden when printing -->
-        <div class="px-4 sm:px-6 py-3.5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 no-print">
-          <div class="flex items-center gap-3">
-            <div>
-              <h2 class="text-sm sm:text-base font-semibold tracking-tight">Επίσημο Παραστατικό & myDATA</h2>
-              <p class="text-[11px] text-slate-400">Εκτύπωση A4, Φορητό Θερμικό (Ex-Van) ή XML</p>
-            </div>
-            
-            <!-- View Mode Switcher -->
-            <div class="flex bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-xs">
-              <button
-                type="button"
-                (click)="activeMode.set('a4')"
-                [class.bg-indigo-600]="activeMode() === 'a4'"
-                [class.text-white]="activeMode() === 'a4'"
-                [class.text-slate-400]="activeMode() !== 'a4'"
-                class="px-2.5 py-1 rounded-md transition font-medium"
-              >
-                Έντυπο A4
-              </button>
-              <button
-                type="button"
-                (click)="activeMode.set('thermal80')"
-                [class.bg-indigo-600]="activeMode() === 'thermal80'"
-                [class.text-white]="activeMode() === 'thermal80'"
-                [class.text-slate-400]="activeMode() !== 'thermal80'"
-                class="px-2.5 py-1 rounded-md transition font-medium flex items-center gap-1.5"
-              >
-                <span>Θερμικό 80mm</span>
-                <span class="text-[9px] px-1 py-0.2 bg-amber-500 text-slate-950 font-bold rounded">Van</span>
-              </button>
-              <button
-                type="button"
-                (click)="activeMode.set('xml')"
-                [class.bg-indigo-600]="activeMode() === 'xml'"
-                [class.text-white]="activeMode() === 'xml'"
-                [class.text-slate-400]="activeMode() !== 'xml'"
-                class="px-2.5 py-1 rounded-md transition font-medium"
-              >
-                XML
-              </button>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-2">
-            @if (activeMode() !== 'xml') {
-              <button
-                type="button"
-                (click)="triggerPrint()"
-                class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold shadow-sm transition flex items-center gap-2 text-white cursor-pointer"
-              >
-                <span>Εκτύπωση ({{ activeMode() === 'thermal80' ? '80mm' : 'A4' }})</span>
-              </button>
-            } @else {
-              <button
-                type="button"
-                (click)="copyXml()"
-                class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-xs font-semibold transition text-slate-200 cursor-pointer"
-              >
-                {{ copied() ? 'Αντιγράφηκε!' : 'Αντιγραφή XML' }}
-              </button>
-            }
-
-            <button
-              type="button"
-              (click)="close.emit()"
-              class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition cursor-pointer"
-            >
-              Κλείσιμο
-            </button>
-          </div>
-        </div>
-
-        <!-- Body Area -->
-        <div class="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100 flex justify-center print-body-area">
-          
-          <!-- ========================================== -->
-          <!-- 1. MODE: A4 CORPORATE PRINT SHEET          -->
-          <!-- ========================================== -->
-          @if (activeMode() === 'a4') {
-           <div class="print-sheet bg-white border border-slate-300 shadow-md p-6 sm:p-8 w-full max-w-[210mm] min-h-[calc(297mm-24mm)] text-slate-900 font-sans text-xs flex flex-col justify-between">
-  
-  <!-- TOP CONTENT AREA -->
-  <div class="flex-1 space-y-4">
-    
-    <!-- 1. Header (Issuer & Doc Type) -->
-    <div class="flex justify-between items-start border-b-2 border-slate-900 pb-4">
-      <div>
-        <div class="flex items-center gap-2 mb-1">
-          <span class="no-print w-6 h-6 rounded bg-indigo-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
-            {{ (invoice().issuer.tradeName || invoice().issuer.legalName).charAt(0) }}
-          </span>
-          <h1 class="text-lg font-black tracking-tight uppercase">
-            {{ invoice().issuer.tradeName || invoice().issuer.legalName }}
-          </h1>
-        </div>
-
-        @if (invoice().issuer.tradeName && invoice().issuer.legalName !== invoice().issuer.tradeName) {
-          <p class="font-medium text-slate-700">{{ invoice().issuer.legalName }}</p>
-        }
-
-        <p class="text-[11px] text-slate-600 mt-1">
-          Α.Φ.Μ.: <span class="font-bold font-mono">{{ invoice().issuer.afm }}</span>
-          @if (invoice().issuer.doy) {
-            | Δ.Ο.Υ.: {{ invoice().issuer.doy }}
-          }
-        </p>
-
-        @if (invoice().issuer.address?.street) {
-          <p class="text-[11px] text-slate-600">
-            {{ invoice().issuer.address?.street }} {{ invoice().issuer.address?.number }}, 
-            {{ invoice().issuer.address?.postalCode }} {{ invoice().issuer.address?.city }}
-          </p>
-        }
-
-        @if (invoice().issuer.phone || invoice().issuer.email) {
-          <p class="text-[11px] text-slate-600">
-            {{ invoice().issuer.phone ? 'Τηλ: ' + invoice().issuer.phone : '' }} 
-            {{ invoice().issuer.email ? '| ' + invoice().issuer.email : '' }}
-          </p>
-        }
-      </div>
-
-      <div class="text-right flex flex-col items-end">
-        <div class="border-2 border-slate-900 bg-slate-50 px-4 py-2 rounded-md text-center inline-block">
-          <span class="block text-[9px] font-bold uppercase tracking-wider text-slate-500">Ειδος Παραστατικου</span>
-          <span class="text-sm font-black text-slate-900 uppercase">
-            {{ getDocTitle(invoice().invoiceType) }}
-          </span>
-        </div>
-        <div class="mt-2 space-y-0.5 text-right text-[11px]">
-          <p><span class="text-slate-500">Σειρά:</span> <span class="font-bold font-mono text-slate-900">{{ invoice().series }}</span></p>
-          <p><span class="text-slate-500">Αριθμός:</span> <span class="font-bold font-mono text-slate-900">{{ invoice().documentNumber }}</span></p>
-          <p><span class="text-slate-500">Ημερομηνία:</span> <span class="font-mono text-slate-900">{{ invoice().issueDate }}</span></p>
-        </div>
-      </div>
-    </div>
-
-    <!-- 2. Recipient Box -->
-    <div class="border border-slate-300 rounded-lg p-3 bg-slate-50/70">
-      <span class="block text-[9px] font-extrabold uppercase tracking-widest text-slate-500 mb-1">Στοιχεια Ληπτη / Προμηθευτη</span>
-      <div class="grid grid-cols-2 gap-4 text-[11px]">
-        <div>
-          <p class="font-bold text-slate-900 text-xs">{{ invoice().customer.legalName }}</p>
-          <p class="text-slate-600">{{ invoice().customer.address?.street }} {{ invoice().customer.address?.number }}</p>
-          <p class="text-slate-600">{{ invoice().customer.address?.postalCode }} {{ invoice().customer.address?.city }}</p>
-        </div>
-        <div class="space-y-0.5 text-right sm:text-left sm:pl-8 border-l border-slate-200">
-          <p><span class="text-slate-500">Α.Φ.Μ.:</span> <span class="font-bold font-mono text-slate-900">{{ invoice().customer.afm || '—' }}</span></p>
-          <p><span class="text-slate-500">Δ.Ο.Υ.:</span> <span class="text-slate-800">{{ invoice().customer.doy || '—' }}</span></p>
-          <p><span class="text-slate-500">Email:</span> <span class="font-mono text-slate-800">{{ invoice().customer.email || '—' }}</span></p>
-        </div>
-      </div>
-    </div>
-
-    <!-- 3. Goods Movement Box -->
-    @if (invoice().movement) {
-      <div class="border border-amber-300 bg-amber-50/60 rounded-lg p-2.5 text-[10px] space-y-1">
-        <div class="flex justify-between items-center border-b border-amber-200 pb-1">
-          <span class="font-bold uppercase tracking-wider text-amber-900">Στοιχεια Διακινησης (ΑΑΔΕ)</span>
-          <span class="font-mono font-bold text-amber-950">
-            Αρ. Οχήματος: {{ invoice().movement!.vehicleNumber }}
-          </span>
-        </div>
-        <div class="grid grid-cols-3 gap-2 pt-1 text-slate-700">
-          <div>
-            <span class="text-slate-500">Σκοπός:</span>
-            <span class="font-semibold block">{{ getPurposeLabel(invoice().movement!.movePurpose) }}</span>
-          </div>
-          <div>
-            <span class="text-slate-500">Τόπος Έναρξης:</span>
-            <span class="block font-medium">
-              {{ invoice().movement!.addressFrom.street }} {{ invoice().movement!.addressFrom.number }}, {{ invoice().movement!.addressFrom.city }}
-            </span>
-          </div>
-          <div>
-            <span class="text-slate-500">Τόπος Παράδοσης:</span>
-            <span class="block font-medium">
-              {{ invoice().movement!.addressTo.street }} {{ invoice().movement!.addressTo.number }}, {{ invoice().movement!.addressTo.city }}
-            </span>
-          </div>
-        </div>
-      </div>
-    }
-
-    <!-- 4. Lines Table -->
-    <table class="w-full border-collapse text-left text-[11px]">
-      <thead>
-        <tr class="border-b-2 border-slate-900 text-[10px] uppercase font-bold text-slate-700">
-          <th class="py-1.5 w-8">#</th>
-          <th class="py-1.5">Περιγραφη Ειδους</th>
-          <th class="py-1.5 text-right w-20">Ποσοτητα</th>
-          @if (!isDispatch()) {
-            <th class="py-1.5 text-right w-20">Τιμη Μον.</th>
-            <th class="py-1.5 text-right w-16">Εκπτ. %</th>
-            <th class="py-1.5 text-right w-20">Καθαρη</th>
-          }
-          <th class="py-1.5 text-right w-16">ΦΠΑ</th>
-          @if (!isDispatch()) {
-            <th class="py-1.5 text-right w-24">Συνολο</th>
-          }
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-slate-200">
-        @for (line of invoice().lines; track line.id || $index) {
-          <tr>
-            <td class="py-1.5 font-mono text-slate-500">{{ line.lineNumber || $index + 1 }}</td>
-            <td class="py-1.5 font-medium text-slate-900">{{ line.description }}</td>
-            <td class="py-1.5 text-right font-mono font-bold">
-              {{ line.quantity }} {{ invoice().invoiceType === '2.1' ? 'Υπηρ.' : 'Τεμ.' }}
-            </td>
-            @if (!isDispatch()) {
-              <td class="py-1.5 text-right font-mono">{{ line.unitPrice | number:'1.2-2' }} €</td>
-              <td class="py-1.5 text-right font-mono">{{ line.discountPercentage || 0 }}%</td>
-              <td class="py-1.5 text-right font-mono">{{ line.netValue | number:'1.2-2' }} €</td>
-            }
-            <td class="py-1.5 text-right font-mono">{{ isDispatch() ? 'Άνευ ΦΠΑ' : (line.vatPercentage + '%') }}</td>
-            @if (!isDispatch()) {
-              <td class="py-1.5 text-right font-mono font-bold text-slate-900">{{ line.totalValue | number:'1.2-2' }} €</td>
-            }
-          </tr>
-        }
-      </tbody>
-    </table>
-
-  </div>
-
-  <!-- BOTTOM FOOTER (mt-auto locks this strictly at the bottom) -->
-  <div class="mt-auto border-t-2 border-slate-900 pt-3">
-    <div class="flex justify-between items-end">
-      
-      <!-- myDATA QR & Verification Details -->
-      <div class="flex items-center gap-3">
-        <maranth-qr-code [data]="invoice().qrUrl" [size]="90" caption="ΑΑΔΕ myDATA"></maranth-qr-code>
-        <div class="text-[10px] space-y-0.5">
-          <p class="font-extrabold uppercase tracking-wider text-slate-900">Ψηφιακη Σημανση myDATA</p>
-          <p><span class="text-slate-500">MARK:</span> <span class="font-bold font-mono text-slate-900">{{ invoice().mark }}</span></p>
-          <p class="max-w-[260px] truncate"><span class="text-slate-500">UID:</span> <span class="font-mono text-[9px] text-slate-700">{{ invoice().uid }}</span></p>
-          @if (isDispatch()) {
-            <p class="text-[9px] font-bold text-amber-800">Μηδενική Χρηματική Αξία (Σκοπός: {{ getPurposeLabel(invoice().movement?.movePurpose) }})</p>
-          } @else {
-            <p class="text-[9px] text-slate-500 italic">Επαλήθευση εγκυρότητας μέσω σάρωσης του QR Code</p>
-          }
-        </div>
-      </div>
-
-      <!-- Totals & Signatures -->
-      @if (isDispatch()) {
-        <div class="w-72 space-y-2 text-xs border border-slate-300 bg-slate-50 p-2.5 rounded-lg">
-          <div class="flex justify-between font-bold text-slate-800 pb-1 border-b border-slate-200">
-            <span>ΣΥΝΟΛΟ ΕΙΔΩΝ:</span>
-            <span class="font-mono font-black">{{ invoice().lines.length }} γραμμές</span>
-          </div>
-          <div class="grid grid-cols-2 gap-3 pt-1 text-[10px] text-center">
-            <div>
-              <span class="block text-slate-500 font-bold mb-4">Ο ΠΑΡΑΔΩΣΑΣ</span>
-              <span class="block border-t border-slate-400 pt-1">Υπογραφή</span>
-            </div>
-            <div>
-              <span class="block text-slate-500 font-bold mb-4">Ο ΠΑΡΑΛΑΒΩΝ</span>
-              <span class="block border-t border-slate-400 pt-1">Υπογραφή / Σφραγίδα</span>
-            </div>
-          </div>
-        </div>
-      } @else {
-        <div class="w-64 space-y-1 text-right text-xs">
-          <div class="flex justify-between text-slate-600">
-            <span>Καθαρή Αξία:</span>
-            <span class="font-mono font-medium text-slate-900">{{ invoice().totals.totalNetValue | number:'1.2-2' }} €</span>
-          </div>
-          <div class="flex justify-between text-slate-600">
-            <span>Συνολικός Φ.Π.Α.:</span>
-            <span class="font-mono font-medium text-slate-900">{{ invoice().totals.totalVatAmount | number:'1.2-2' }} €</span>
-          </div>
-          <div class="border-t border-slate-900 pt-1.5 flex justify-between text-sm font-black text-slate-900">
-            <span>Πληρωτέο Σύνολο:</span>
-            <span class="font-mono text-indigo-700 text-base">{{ invoice().totals.totalGrossValue | number:'1.2-2' }} €</span>
-          </div>
-        </div>
-      }
-    </div>
-
-    <!-- Legal software footer -->
-    <div class="mt-4 pt-2 border-t border-slate-200 text-center text-[9px] text-slate-400">
-      Εκδόθηκε μέσω Maranth Timologio SaaS — myDATA Technical Protocol v1.0.8
-    </div>
-  </div>
-
-</div>
-          }
-
-          <!-- ======================================================== -->
-          <!-- 2. MODE: 80mm ESC/POS THERMAL RECEIPT (FOR MOBILE VANS) -->
-          <!-- ======================================================== -->
-          @if (activeMode() === 'thermal80') {
-            <div class="thermal-receipt bg-white text-black font-mono text-[11px] leading-tight p-3 w-[80mm] max-w-[80mm] border border-slate-300 shadow-md">
-              <div class="text-center pb-2 border-b border-dashed border-black">
-                <p class="font-black text-sm tracking-wider uppercase">
-                  {{ invoice().issuer.tradeName || invoice().issuer.legalName }}
-                </p>
-                <p class="text-[10px]">
-                  ΑΦΜ: {{ invoice().issuer.afm }}
-                  {{ invoice().issuer.doy ? '- ΔΟΥ: ' + invoice().issuer.doy : '' }}
-                </p>
-                @if (invoice().issuer.address?.street) {
-                  <p class="text-[9px]">
-                    {{ invoice().issuer.address?.street }} {{ invoice().issuer.address?.number }}, {{ invoice().issuer.address?.city }}
-                  </p>
-                }
-                @if (invoice().issuer.phone) {
-                  <p class="text-[9px]">ΤΗΛ: {{ invoice().issuer.phone }}</p>
-                }
-              </div>
-
-              <div class="py-2 border-b border-dashed border-black text-[10px] space-y-0.5">
-                <div class="font-bold text-center text-xs uppercase my-0.5">
-                  {{ getDocTitle(invoice().invoiceType) }}
-                </div>
-                <div class="flex justify-between">
-                  <span>ΣΕΙΡΑ-ΑΡΙΘΜΟΣ:</span>
-                  <span class="font-bold">{{ invoice().series }}-{{ invoice().documentNumber }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>ΗΜΕΡΟΜΗΝΙΑ:</span>
-                  <span>{{ invoice().issueDate }}</span>
-                </div>
-              </div>
-
-              <div class="py-2 border-b border-dashed border-black text-[10px] space-y-0.5">
-                <p class="font-bold uppercase truncate">{{ invoice().customer.legalName }}</p>
-                <p>ΑΦΜ: <span class="font-bold">{{ invoice().customer.afm }}</span> | ΔΟΥ: {{ invoice().customer.doy || '—' }}</p>
-                <p class="truncate">{{ invoice().customer.address?.street }} {{ invoice().customer.address?.number }}, {{ invoice().customer.address?.city }}</p>
-              </div>
-
-              @if (invoice().movement) {
-                <div class="py-2 border-b border-dashed border-black text-[9px] space-y-0.5 bg-slate-50/50">
-                  <p class="font-bold uppercase text-[10px] text-center">** ΔΙΑΚΙΝΗΣΗ ΑΓΑΘΩΝ (AADE) **</p>
-                  <div class="flex justify-between font-bold">
-                    <span>ΟΧΗΜΑ:</span>
-                    <span>{{ invoice().movement!.vehicleNumber }}</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span>ΣΚΟΠΟΣ:</span>
-                    <span>{{ getPurposeLabel(invoice().movement!.movePurpose) }}</span>
-                  </div>
-                  <p class="truncate">ΕΝΑΡΞΗ: {{ invoice().movement!.addressFrom.city }}</p>
-                  <p class="truncate">ΠΑΡΑΔΟΣΗ: {{ invoice().movement!.addressTo.city }}</p>
-                </div>
-              }
-
-              <div class="py-2 border-b border-dashed border-black">
-                @if (isDispatch()) {
-                  <div class="flex justify-between font-bold text-[9px] pb-1 border-b border-black">
-                    <span class="w-[70%]">ΕΙΔΟΣ/ΠΕΡΙΓΡΑΦΗ</span>
-                    <span class="w-[30%] text-right">ΠΟΣΟΤΗΤΑ</span>
-                  </div>
-
-                  <div class="divide-y divide-dotted divide-slate-400 py-1">
-                    @for (line of invoice().lines; track line.id || $index) {
-                      <div class="py-1 text-[10px]">
-                        <div class="font-bold truncate">{{ line.description }}</div>
-                        <div class="flex justify-between text-[9px]">
-                          <span>Άνευ ΦΠΑ</span>
-                          <span class="font-bold font-mono">{{ line.quantity }} Τεμ.</span>
-                        </div>
-                      </div>
-                    }
-                  </div>
-                } @else {
-                  <div class="flex justify-between font-bold text-[9px] pb-1 border-b border-black">
-                    <span class="w-[50%]">ΕΙΔΟΣ/ΠΕΡΙΓΡΑΦΗ</span>
-                    <span class="w-[20%] text-right">ΠΟΣxΤΙΜ</span>
-                    <span class="w-[30%] text-right">ΑΞΙΑ</span>
-                  </div>
-
-                  <div class="divide-y divide-dotted divide-slate-400 py-1">
-                    @for (line of invoice().lines; track line.id || $index) {
-                      <div class="py-1 text-[10px]">
-                        <div class="font-bold truncate">{{ line.description }}</div>
-                        <div class="flex justify-between text-[9px]">
-                          <span>{{ line.quantity }} x {{ line.unitPrice | number:'1.2-2' }}€ ({{ line.vatPercentage }}%)</span>
-                          <span class="font-bold">{{ line.totalValue | number:'1.2-2' }} €</span>
-                        </div>
-                      </div>
-                    }
-                  </div>
-                }
-              </div>
-
-              @if (isDispatch()) {
-                <div class="py-2 border-b border-dashed border-black text-center text-[10px] font-bold space-y-1">
-                  <p>ΜΗΔΕΝΙΚΗ ΧΡΗΜΑΤΙΚΗ ΑΞΙΑ</p>
-                  <p class="text-[9px] font-normal">ΣΥΝΟΛΙΚΑ ΕΙΔΗ: {{ invoice().lines.length }} γραμμές</p>
-                </div>
-                <div class="py-3 text-[9px] grid grid-cols-2 gap-2 text-center border-b border-dashed border-black">
-                  <div>
-                    <p class="font-bold pb-4">ΠΑΡΑΔΟΣΗ</p>
-                    <p>..................</p>
-                  </div>
-                  <div>
-                    <p class="font-bold pb-4">ΠΑΡΑΛΑΒΗ</p>
-                    <p>..................</p>
-                  </div>
-                </div>
-              } @else {
-                <div class="py-2 border-b border-dashed border-black space-y-1 text-right text-[11px]">
-                  <div class="flex justify-between text-slate-700">
-                    <span>ΚΑΘΑΡΗ ΑΞΙΑ:</span>
-                    <span>{{ invoice().totals.totalNetValue | number:'1.2-2' }} €</span>
-                  </div>
-                  <div class="flex justify-between text-slate-700">
-                    <span>ΣΥΝΟΛΟ ΦΠΑ:</span>
-                    <span>{{ invoice().totals.totalVatAmount | number:'1.2-2' }} €</span>
-                  </div>
-                  <div class="flex justify-between font-black text-sm pt-1 border-t border-black">
-                    <span>ΠΛΗΡΩΤΕΟ:</span>
-                    <span>{{ invoice().totals.totalGrossValue | number:'1.2-2' }} €</span>
-                  </div>
-                </div>
-              }
-
-              <div class="py-3 text-center flex flex-col items-center space-y-1.5">
-                <maranth-qr-code [data]="invoice().qrUrl" [size]="85" caption="myDATA QR"></maranth-qr-code>
-                <div class="text-[9px] leading-tight space-y-0.5">
-                  <p class="font-bold">MARK: {{ invoice().mark }}</p>
-                  <p class="font-mono text-[8px] break-all">UID: {{ invoice().uid }}</p>
-                  <p class="text-[8px] italic pt-1">ΕΛΕΓΧΟΣ ΕΓΚΥΡΟΤΗΤΑΣ: aade.gr/mydata</p>
-                </div>
-              </div>
-
-              <div class="text-center text-[8px] text-slate-500 pt-1 pb-4">
-                *** ΤΕΛΟΣ ΠΑΡΑΣΤΑΤΙΚΟΥ ***
-              </div>
-            </div>
-          }
-
-          <!-- ========================================== -->
-          <!-- 3. MODE: RAW AADE XML                      -->
-          <!-- ========================================== -->
-          @if (activeMode() === 'xml') {
-            <div class="w-full bg-slate-950 rounded-xl p-5 border border-slate-800 text-slate-100 font-mono text-xs overflow-x-auto shadow-inner">
-              <pre class="leading-relaxed"><code>{{ invoice().xmlPayload }}</code></pre>
-            </div>
-          }
-
-        </div>
-
-      </div>
-    </div>
-  `,
+  imports: [CommonModule],
+  templateUrl: './invoice-print.component.html',
+  styleUrls: ['./invoice-print.component.css'],
 })
 export class InvoicePrintComponent {
-  public readonly invoice = input.required<PrintableInvoiceData>();
-  public readonly close = output<void>();
+  @ViewChild('printContainer') printContainerRef?: ElementRef<HTMLElement>;
+  private readonly printEngine = inject(InvoicePrintEngineService);
+  private readonly elRef = inject(ElementRef);
 
-  public readonly activeMode = signal<PrintLayoutMode>('a4');
-  public readonly copied = signal<boolean>(false);
+  // Input accepting either PrintableInvoiceData or any invoice payload
+  readonly invoice = input<any>(null);
 
-  public isDispatch = computed(() => {
-    const t = this.invoice().invoiceType;
-    return t === '9.1' || t === '9.3';
-  });
+  // UI state signals bound in the template
+  readonly activeMode = signal<'a4' | 'thermal80'>('a4');
+  readonly copied = signal<boolean>(false);
 
-  public triggerPrint(): void {
-  const isThermal = this.activeMode() === 'thermal80';
-  const selector = isThermal ? '.thermal-receipt' : '.print-sheet';
-  const sourceEl = document.querySelector(selector) as HTMLElement;
-
-  if (!sourceEl) {
-    window.print();
-    return;
-  }
-
-  // 1. Clone the content and physically strip non-printable elements
-  const clone = sourceEl.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll('.no-print').forEach(el => el.remove());
-
-  // 2. Convert Canvas elements (QR code) to static base64 images
-  const srcCanvases = sourceEl.querySelectorAll('canvas');
-  const destCanvases = clone.querySelectorAll('canvas');
-
-  srcCanvases.forEach((src, idx) => {
-    const dest = destCanvases[idx];
-    if (dest) {
-      const img = document.createElement('img');
-      img.src = src.toDataURL('image/png');
-      img.style.width = `${src.width}px`;
-      img.style.height = `${src.height}px`;
-      img.style.display = 'inline-block';
-      dest.parentNode?.replaceChild(img, dest);
+  // ---------------------------------------------------------------------------
+  // Print Dispatcher
+  // ---------------------------------------------------------------------------
+  public triggerBrowserPrint(event?: Event): void {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
     }
-  });
+    console.log('👉 triggerBrowserPrint called in InvoicePrintComponent');
+    this.triggerPrint();
+  }
 
-  // 3. Create isolated iframe
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentWindow?.document;
-  if (!doc) {
-    window.print();
+ public triggerPrint(): void {
+  // Grab the native DOM element directly from Angular ViewChild
+  const element = this.printContainerRef?.nativeElement;
+  
+  if (!element) {
+    console.error('Print container element not found via ViewChild!');
     return;
   }
 
-  // 4. Extract parent document styles (Tailwind + utility classes)
-  const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-    .map(el => el.outerHTML)
-    .join('\n');
-
-  const pageCss = isThermal
-  ? `@page { size: 80mm auto; margin: 0; }
-     html, body { margin: 0 !important; padding: 0 !important; width: 80mm !important; }
-     .thermal-receipt { width: 80mm !important; max-width: 80mm !important; border: none !important; box-shadow: none !important; margin: 0 !important; }`
-  : `@page { size: A4 portrait; margin: 8mm 8mm; }
-     html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; height: auto !important; background: #ffffff !important; }
-     .print-sheet { 
-       width: 100% !important; 
-       max-width: 100% !important; 
-       height: calc(297mm - 16mm) !important; 
-       min-height: calc(297mm - 16mm) !important; 
-       display: flex !important;
-       flex-direction: column !important;
-       justify-content: space-between !important;
-       box-sizing: border-box !important;
-       border: none !important;
-       box-shadow: none !important;
-       margin: 0 !important;
-       padding: 0 !important;
-     }`;
-
-  doc.open();
-  doc.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>${this.invoice().series}-${this.invoice().documentNumber}</title>
-        ${styles}
-        <style>
-          ${pageCss}
-          .no-print { display: none !important; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        </style>
-      </head>
-      <body>
-        ${clone.outerHTML}
-      </body>
-    </html>
-  `);
-  doc.close();
-
-  // 5. Trigger print and clean up
-  setTimeout(() => {
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-    setTimeout(() => iframe.remove(), 1000);
-  }, 200);
+  this.printEngine.printElement(element, this.activeMode());
 }
 
+  // ---------------------------------------------------------------------------
+  // Template Helpers (Required by invoice-print.component.html)
+  // ---------------------------------------------------------------------------
   public copyXml(): void {
-    const xml = this.invoice().xmlPayload;
+    const xml = this.invoice()?.xmlPayload;
     if (xml) {
       navigator.clipboard.writeText(xml);
       this.copied.set(true);
@@ -622,27 +148,60 @@ export class InvoicePrintComponent {
     }
   }
 
-  public getDocTitle(type: string): string {
+  public getDocTitle(type?: string): string {
     switch (type) {
-      case '1.1': return '1.1 Τιμολόγιο Πώλησης';
-      case '2.1': return '2.1 Τιμολόγιο Παροχής Υπηρεσιών';
-      case '5.1': return '5.1 Πιστωτικό Τιμολόγιο';
-      case '9.1': return '9.1 Δελτίο Αποστολής (Συσχετιζόμενο)';
-      case '9.3': return '9.3 Δελτίο Αποστολής (Αυτόνομο)';
-      default: return 'Παραστατικό';
+      case '1.1': return 'ΤΙΜΟΛΟΓΙΟ ΠΩΛΗΣΗΣ';
+      case '1.2': return 'ΤΙΜΟΛΟΓΙΟ ΠΩΛΗΣΗΣ / ΕΝΔΟΚΟΙΝΟΤΙΚΕΣ';
+      case '2.1': return 'ΤΙΜΟΛΟΓΙΟ ΠΑΡΟΧΗΣ ΥΠΗΡΕΣΙΩΝ';
+      case '8.1': return 'ΕΝΔΟΚΟΙΝΟΤΙΚΗ ΠΑΡΟΧΗ ΥΠΗΡΕΣΙΩΝ';
+      case '9.1': return 'ΔΕΛΤΙΟ ΑΠΟΣΤΟΛΗΣ';
+      case '11.1': return 'ΑΠΟΔΕΙΞΗ ΛΙΑΝΙΚΗΣ';
+      case '11.2': return 'ΑΠΟΔΕΙΞΗ ΠΑΡΟΧΗΣ ΥΠΗΡΕΣΙΩΝ';
+      default: return 'ΠΑΡΑΣΤΑΤΙΚΟ';
     }
   }
 
-  public getPurposeLabel(purposeCode?: number): string {
-    switch (Number(purposeCode)) {
-      case 1: return 'Πώληση';
-      case 2: return 'Διακίνηση';
-      case 3: return 'Δειγματισμός';
-      case 4: return 'Έκθεση';
-      case 5: return 'Επεξεργασία';
-      case 6: return 'Επιστροφή';
-      case 7: return 'Λοιπά';
-      default: return 'Πώληση';
+  public isDispatch(): boolean {
+    const inv = this.invoice();
+    return inv?.invoiceType === '9.1' || !!inv?.movement;
+  }
+
+  public isRetailDoc(type?: string): boolean {
+    const t = type || this.invoice()?.invoiceType;
+    return t === '11.1' || t === '11.2';
+  }
+
+  public getCustomerAddress(customer: any): string {
+    if (!customer?.address) return '';
+    const { street, number, postalCode, city } = customer.address;
+    return [street, number, postalCode, city].filter(Boolean).join(' ');
+  }
+
+  public getPurposeLabel(purposeCode?: string | number): string {
+    switch (String(purposeCode)) {
+      case '1': return 'Πώληση';
+      case '2': return 'Δειγματισμός';
+      case '3': return 'Έκθεση';
+      case '4': return 'Επιστροφή';
+      case '5': return 'Επεξεργασία';
+      default: return 'Διακίνηση';
     }
+  }
+
+  public getUnitLabel(unit: string | number | undefined, _type?: string): string {
+    switch (String(unit)) {
+      case '1': return 'Τεμ.';
+      case '2': return 'Κιλά';
+      case '3': return 'Λίτρα';
+      case '4': return 'Μέτρα';
+      case '5': return 'Ώρες';
+      case '6': return 'Μήνες';
+      default: return 'Τεμ.';
+    }
+  }
+
+  public getQrImageUrl(qrUrl?: string): string {
+    if (!qrUrl) return '';
+    return `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrUrl)}`;
   }
 }

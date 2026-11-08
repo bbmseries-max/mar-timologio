@@ -87,3 +87,12 @@ Linked movePurpose select to update return series (ΕΠΙΣΤΡ) cleanly.
 git add .
 git commit -m "feat: stabilize myDATA 1.1, 9.3, 2.1 serialization and isolated print engine"
 git push
+
+For Service Invoices (2.1): ΤΠΥ or Α
+
+For Sales Invoices (1.1): ΤΙΜ or Α
+
+For Delivery Notes (9.3): ΔΑ or Α
+
+For Retail Receipts (11.1): ΑΛΠ or
+

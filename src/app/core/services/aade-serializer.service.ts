@@ -80,10 +80,12 @@ export class AadeSerializerService {
     const invType = String(data.invoiceType || '1.1').trim();
     const is93 = invType === '9.3';
     const isMovementOnly = is93 || invType === '9.1';
-    
-    // Corrected service vs retail flags
+
+    // Document classification flags
     const isServiceInvoice = invType === '2.1' || invType === '11.2';
-    const isRetail = invType === '11.1' || invType === '11.2';
+    const isRetailGoods = invType === '11.1';
+    const isRetailServices = invType === '11.2';
+    const isRetail = isRetailGoods || isRetailServices;
 
     // 1. Issuer Validation (Strictly dynamic from tenant)
     const issuerAfm = String(data.issuer?.afm || '').replace(/\D/g, '').trim();
@@ -99,12 +101,12 @@ export class AadeSerializerService {
       <branch>${issuerBranch}</branch>
     </issuer>`;
 
-    // 2. Counterpart - Strictly omitted in 9.3 or when B2C without AFM
+    // 2. Counterpart - Strictly omitted on 9.3 or anonymous retail
     let counterpartXml = '';
     const cp = data.counterpart || data.counterparty;
     const rawCpAfm = cp?.afm || cp?.vatNumber || '';
 
-    if (!is93 && rawCpAfm && String(rawCpAfm).trim() !== '') {
+    if (!is93 && rawCpAfm && String(rawCpAfm).replace(/\D/g, '').trim() !== '') {
       const cpAfm = String(rawCpAfm).replace(/\D/g, '').trim();
       const cpCountry = (cp.country || 'GR').toUpperCase();
       const isGreek = cpCountry === 'GR';
@@ -116,7 +118,7 @@ export class AadeSerializerService {
 
       const cpStreet = this.escapeXml(cp.street || cp.address?.street || '');
       const rawCpNumber = cp.number || cp.address?.number || '';
-      const cpNum = this.escapeXml((rawCpNumber && rawCpNumber !== '0' && rawCpNumber !== '00') ? rawCpNumber : '1');
+      const cpNum = this.escapeXml((rawCpNumber && rawCpNumber !== '0') ? rawCpNumber : '1');
       const cpZip = this.escapeXml(cp.postalCode || cp.address?.postalCode || '');
       const cpCity = this.escapeXml(cp.city || cp.address?.city || '');
       const cpBranch = isNaN(Number(cp.branch)) ? 0 : Number(cp.branch);
@@ -199,7 +201,7 @@ export class AadeSerializerService {
       </otherDeliveryNoteHeader>`;
     }
 
-    // 4. Payment Methods (Omitted on 9.3 movement notes, mandatory for commercial)
+    // 4. Payment Methods (Omitted on 9.3 movement notes, mandatory for commercial & retail)
     let paymentMethodsXml = '';
     const grossVal = isMovementOnly ? '0.00' : Number(data.totals?.totalGrossValue || 0).toFixed(2);
     if (!isMovementOnly) {
@@ -243,10 +245,23 @@ export class AadeSerializerService {
         const vat = Number(line.vatAmount || 0).toFixed(2);
         const vatCat = Number(line.vatRateCategory ?? line.vatCategory ?? 1);
 
-        const e3 = 'E3_561_001';
-        const cat = isServiceInvoice ? 'category1_3' : 'category1_1';
+        // Map line classifications across 1.1, 2.1, 11.1, 11.2
+        let e3 = 'E3_561_001'; // Default wholesale goods (1.1)
+        let cat = 'category1_1';
 
-        // Quantity and unit are omitted strictly on service invoices (2.1, 11.2)
+        if (isRetailGoods) {
+          e3 = 'E3_561_003'; // Retail goods (11.1)
+          cat = 'category1_1';
+        } else if (isRetailServices) {
+          e3 = 'E3_561_003'; // 👈 FIXED: Retail services (11.2)
+          cat = 'category1_3';
+        } else if (isServiceInvoice) {
+          e3 = 'E3_561_002'; // 👈 FIXED: Wholesale services (2.1)
+          cat = 'category1_3';
+        }
+
+        // Rule 205: Quantity and measurementUnit are strictly omitted on service invoices (2.1, 11.2)
+        // Kept for 1.1 and 11.1
         const qtyAndUnitTags = isServiceInvoice
           ? ''
           : `\n      <quantity>${qty.toFixed(2)}</quantity>\n      <measurementUnit>${unit}</measurementUnit>`;
@@ -278,8 +293,19 @@ export class AadeSerializerService {
         <icls:amount>0.00</icls:amount>
       </incomeClassification>`;
     } else {
-      const summaryE3 = 'E3_561_001';
-      const summaryCat = isServiceInvoice ? 'category1_3' : 'category1_1';
+      let summaryE3 = 'E3_561_001';
+      let summaryCat = 'category1_1';
+
+      if (isRetailGoods) {
+        summaryE3 = 'E3_561_003';
+        summaryCat = 'category1_1';
+      } else if (isRetailServices) {
+        summaryE3 = 'E3_561_003'; // 👈 Retail services (11.2)
+        summaryCat = 'category1_3';
+      } else if (isServiceInvoice) {
+        summaryE3 = 'E3_561_002'; // 👈 Wholesale services (2.1)
+        summaryCat = 'category1_3';
+      }
 
       summaryClassificationXml = `
       <incomeClassification>

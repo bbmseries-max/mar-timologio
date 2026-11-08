@@ -1,4 +1,4 @@
-/* You can add global styles to this file, and also import other style files */
+/* Global application styles */
 @use "tailwindcss";
 
 @layer base {
@@ -9,18 +9,21 @@
   }
 }
 
-/* Hidden on normal screen view */
-#print-portal {
+/* Hidden during normal on-screen application view */
+#maranth-print-portal {
   display: none;
 }
 
-@media print {
-  @page {
-    size: A4 portrait;
-    margin: 6mm 8mm;
-  }
+/* ==========================================================================
+   MARANTH PRO - UNIFIED PRINT ENGINE
+   ========================================================================== */
+@page {
+  size: A4 portrait;
+  margin: 6mm 8mm;
+}
 
-  /* 1. Neutralize html and body */
+@media print {
+  /* 1. Reset html and body root */
   html, body {
     margin: 0 !important;
     padding: 0 !important;
@@ -28,82 +31,88 @@
     min-height: 0 !important;
     overflow: visible !important;
     background: #ffffff !important;
+    color: #0f172a !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* 2. COMPLETELY HIDE the main Angular SPA tree */
-  maranth-root {
+  /* 2. Suppress entire SPA Angular app and all modal overlays */
+  body > *:not(#maranth-print-portal) {
     display: none !important;
     height: 0 !important;
     overflow: hidden !important;
   }
 
-  /* 3. Pull the print portal / isolated area to the absolute top of the print stream */
-  #print-portal,
-  #aade-isolated-print-area {
+  /* 3. Display ONLY the dedicated print portal */
+  #maranth-print-portal {
     display: block !important;
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
+    position: static !important;
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
-    z-index: 999999 !important;
+    visibility: visible !important;
   }
 
-  /* 4. If the print area is nested inside maranth-root (modal template pattern) */
-  /* We reveal ONLY the print element ancestors, hiding all sibling UI */
-  maranth-root:has(#aade-isolated-print-area),
-  maranth-root:has(#print-portal) {
-    display: block !important;
-    height: auto !important;
-    overflow: visible !important;
-  }
-
-  /* Hide app navigation, sidebars, headers, and backdrop overlays */
-  nav,
-  aside,
-  header,
-  .no-print,
-  .print-modal-backdrop > *:not(.print-modal-window),
-  .print-modal-window > *:not(#aade-isolated-print-area):not(#print-portal) {
-    display: none !important;
-  }
-
-  /* Reset the modal container so it does not take vertical page space */
-  .print-modal-backdrop,
-  .print-modal-window {
-    position: static !important;
-    display: block !important;
+  /* 4. A4 Sheet layout rules (Flex column pins footer to bottom of A4) */
+  #maranth-print-portal .print-sheet {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    max-width: 190mm !important;
+    min-height: 265mm !important; /* Locks full A4 height without creating Page 2 */
+    height: 265mm !important;
+    margin: 0 auto !important;
     padding: 0 !important;
-    margin: 0 !important;
     border: none !important;
     box-shadow: none !important;
-    background: transparent !important;
-    max-height: none !important;
-    height: auto !important;
-    overflow: visible !important;
-  }
-
-  /* 5. Sheet geometry */
-  .print-sheet {
-    display: block !important;
-    width: 100% !important;
-    height: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    break-after: avoid !important;
     page-break-after: avoid !important;
+    break-after: avoid !important;
+    box-sizing: border-box !important;
   }
 
-  /* Prevent row splitting */
+  /* 5. Thermal 80mm layout rules */
+  #maranth-print-portal .thermal-receipt {
+    display: block !important;
+    width: 74mm !important;
+    margin: 0 auto !important;
+    padding: 4px !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* 6. Footer Table Lockdown (Forces Side-by-Side QR & Totals) */
+  #maranth-print-portal .print-footer-container {
+    margin-top: auto !important;
+    width: 100% !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  #maranth-print-portal .print-footer-container table {
+    display: table !important;
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+  }
+
+  #maranth-print-portal .print-footer-container tr {
+    display: table-row !important;
+  }
+
+  #maranth-print-portal .print-footer-container td {
+    display: table-cell !important;
+    vertical-align: top !important;
+  }
+
+  /* 7. Prevent awkward row breaks across pages */
   tr, .avoid-break {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
 
+  /* 8. Watermark styling */
   .watermark,
   .cancelled-stamp,
   .cancelled-watermark {
@@ -115,13 +124,5 @@
     pointer-events: none !important;
     overflow: hidden !important;
     max-width: 80% !important;
-  }
-
-  /* Force zero bottom margin on cancellation info banners */
-  .cancellation-banner,
-  .cancelled-meta {
-    margin-top: 2px !important;
-    margin-bottom: 2px !important;
-    padding: 2px 4px !important;
   }
 }

@@ -1,7 +1,9 @@
-import { Component, ChangeDetectionStrategy, signal, computed, inject, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal,
+  HostListener, computed, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { InvoiceTotals } from '@core/models/aade.models';
 import { LocalInvoiceRecord, TenantSettingsRecord } from '@core/models/database.models';
 import { PrintableInvoiceData } from '../invoice-print/invoice-print.component';
 import { MyDataService } from '@core/services/mydata.service';
@@ -11,6 +13,8 @@ import { TenantIntegrationService } from '@core/services/tenant-integration.serv
 
 export type StatusFilterType = 'ALL' | 'TRANSMITTED' | 'CANCELLED' | 'DRAFT' | 'FAILED';
 
+
+
 @Component({
   selector: 'app-invoice-list',
   standalone: true,
@@ -19,6 +23,12 @@ export type StatusFilterType = 'ALL' | 'TRANSMITTED' | 'CANCELLED' | 'DRAFT' | '
   templateUrl: './invoice-list.component.html'
 })
 export class InvoiceListComponent implements OnInit {
+  @HostListener('document:keydown.escape')
+public onEscape(): void {
+  if (this.selectedInvoiceForPrint()) {
+    this.closePrintModal();
+  }
+}
   private readonly myDataService = inject(MyDataService);
   private readonly db = inject(LocalDbService);
   private readonly tenantService = inject(TenantIntegrationService);
@@ -207,13 +217,19 @@ export class InvoiceListComponent implements OnInit {
     }
   }
 
-  public async deleteDraft(id: string): Promise<void> {
-    if (!confirm('Θέλετε να διαγράψετε αυτό το πρόχειρο;')) return;
-    await this.db.invoices.delete(id);
+  public async deleteDraft(id: string | number): Promise<void> {
+  if (!confirm('Θέλετε να διαγράψετε αυτό το πρόχειρο;')) return;
+  try {
+    // Handle both numeric autoincrement IDs and UUID strings safely
+    const resolvedId = typeof id === 'string' && !Number.isNaN(Number(id)) ? Number(id) : id;
+    await this.db.invoices.delete(resolvedId as any);
     await this.loadInvoices();
+  } catch (err) {
+    console.error('Failed to delete draft:', err);
   }
+}
 
-  public viewInvoice(inv: LocalInvoiceRecord): void {
+public viewInvoice(inv: LocalInvoiceRecord): void {
   if (!inv) return;
 
   let snapshot: any = {};
@@ -223,23 +239,55 @@ export class InvoiceListComponent implements OnInit {
     console.error('Failed to parse invoice payloadJson', e);
   }
 
-  // 1. Try to get issuer from the saved invoice snapshot first (most accurate for historic invoices)
+  // 1. Issuer resolution: Snapshot first, then active tenant settings
   const savedIssuer = snapshot.issuer || {};
-
-  // 2. Fallback to active tenant settings from service
   const tenantSvc = this.tenantService as any;
   const tenant: Partial<TenantSettingsRecord> = 
-    (typeof tenantSvc.settings === 'function' ? tenantSvc.settings() : null) ||
-    (typeof tenantSvc.tenantRecord === 'function' ? tenantSvc.tenantRecord() : null) ||
-    (typeof tenantSvc.currentTenantData === 'function' ? tenantSvc.currentTenantData() : null) ||
-    tenantSvc.currentTenant ||
+    (typeof tenantSvc?.settings === 'function' ? tenantSvc.settings() : null) ||
+    (typeof tenantSvc?.tenantRecord === 'function' ? tenantSvc.tenantRecord() : null) ||
+    (typeof tenantSvc?.currentTenantData === 'function' ? tenantSvc.currentTenantData() : null) ||
+    tenantSvc?.currentTenant ||
     {};
 
+  // 2. Identify if this is a retail document (11.1, 11.2)
+  const docType = String(inv.invoiceType || snapshot.invoiceType || '').trim();
+  const isRetail = docType === '11.1' || docType === '11.2';
+
+  // 3. Customer resolution
+  const savedCustomer = snapshot.customer || snapshot.counterpart;
+  const resolvedCustomer = {
+    legalName: savedCustomer?.legalName || inv.customerName || (isRetail ? 'ΙΔΙΩΤΗΣ / ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ' : '—'),
+    afm: savedCustomer?.afm || savedCustomer?.vatNumber || inv.customerAfm || '',
+    doy: savedCustomer?.doy || '',
+    address: savedCustomer?.address || {
+      street: savedCustomer?.street || '',
+      number: savedCustomer?.number || '',
+      postalCode: savedCustomer?.postalCode || '',
+      city: savedCustomer?.city || ''
+    }
+  };
+
+  // 4. Safe totals resolution (safeguards against undefined / NaN for DecimalPipe)
+  //const totalsSource = snapshot.totals || {};
+  const totalsSource = snapshot.totals || {};
+
+const resolvedTotals: InvoiceTotals = {
+  totalNetValue: Number(totalsSource.totalNetValue ?? (inv as any).totalNetValue ?? (inv as any).totalNet ?? 0),
+  totalVatAmount: Number(totalsSource.totalVatAmount ?? (inv as any).totalVatAmount ?? (inv as any).totalVat ?? 0),
+  totalGrossValue: Number(totalsSource.totalGrossValue ?? (inv as any).totalGrossValue ?? (inv as any).totalGross ?? 0),
+  vatBreakdowns: totalsSource.vatBreakdowns || []
+};
+
+  // 5. Lines resolution
+  const resolvedLines = Array.isArray(snapshot.lines) && snapshot.lines.length > 0
+    ? snapshot.lines
+    : (Array.isArray((inv as any).lines) ? (inv as any).lines : []);
+
   const printableData: PrintableInvoiceData = {
-    series: inv.series,
-    documentNumber: inv.documentNumber,
-    issueDate: inv.issueDate,
-    invoiceType: inv.invoiceType,
+    series: inv.series || snapshot.series || 'Α',
+    documentNumber: Number(inv.documentNumber || snapshot.documentNumber || 1),
+    issueDate: inv.issueDate || snapshot.issueDate || new Date().toISOString().substring(0, 10),
+    invoiceType: docType || '1.1',
     issuer: {
       legalName: savedIssuer.legalName || tenant.legalName || 'ΜΑΡΑΝΘ ΜΟΝΟΠΡΟΣΩΠΗ ΙΚΕ',
       tradeName: savedIssuer.tradeName || tenant.tradeName || '',
@@ -253,37 +301,21 @@ export class InvoiceListComponent implements OnInit {
         city: tenant.city || 'ΑΘΗΝΑ'
       },
       phone: savedIssuer.phone || tenant.phone || '',
-      email: savedIssuer.email || tenant.email || ''
-    },
-    customer: snapshot.customer || snapshot.counterpart || {
-      legalName: inv.customerName || '—',
-      afm: inv.customerAfm || '',
-      doy: snapshot.counterpart?.doy || snapshot.customer?.doy || '',
-      address: snapshot.counterpart?.address || snapshot.customer?.address || {
-        street: 'Λ ΚΗΦΙΣΣΟΥ',
-        number: '40',
-        postalCode: '12133',
-        city: 'ΠΕΡΙΣΤΕΡΙ'
-      }
-    },
-    lines: snapshot.lines || [],
-    totals: snapshot.totals || {
-      totalNetValue: inv.totalNet,
-      totalVatAmount: inv.totalVat,
-      totalGrossValue: inv.totalGross,
-      totalWithheldAmount: 0,
-      totalFeesAmount: 0,
-      totalStampDutyAmount: 0,
-      totalOtherTaxesAmount: 0,
-      totalDeductionsAmount: 0
-    },
-    mark: inv.mark || '—',
-    uid: inv.uid || '—',
-    qrUrl: inv.qrUrl || '',
-    xmlPayload: snapshot.xmlPayload || ''
-  };
+      email: savedIssuer.email || tenant.email || '',
+      activity: savedIssuer.activity || (tenant as any).activity || (tenant as any).businessActivity || 'Εμπορικές Δραστηριότητες',
+  },
+  customer: resolvedCustomer as any,
+  lines: resolvedLines,
+  totals: resolvedTotals,
+  mark: inv.mark || snapshot.mark || '—',
+  uid: inv.uid || snapshot.uid || '—',
+  qrUrl: inv.qrUrl || snapshot.qrUrl || '',
+  xmlPayload: snapshot.xmlPayload || (inv as any).xmlPayload || (inv as any).rawXml || '',
+  status: (inv as any).status || snapshot.status || 'TRANSMITTED',
+  isCancelled: (inv as any).status === 'CANCELLED' || snapshot.isCancelled === true
+};
 
-  this.selectedInvoiceForPrint.set(printableData);
+this.selectedInvoiceForPrint.set(printableData);
 }
 
   public closePrintModal(): void {

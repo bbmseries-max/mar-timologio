@@ -1,0 +1,47 @@
+:host {
+  display: block;
+}
+
+@media print {
+  /* 1. Reset physical page margins */
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm;
+  }
+
+  /* 2. Hide everything in the Angular application body */
+  body > * {
+    visibility: hidden !important;
+  }
+
+  /* 3. Pull the invoice container out of the modal hierarchy and anchor to (0,0) */
+  #printable-invoice-container,
+  #printable-invoice-container * {
+    visibility: visible !important;
+  }
+
+  #printable-invoice-container {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 190mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    z-index: 9999999 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 4. Hide all UI buttons, backdrops, and navigation */
+  button,
+  .no-print,
+  dialog,
+  nav,
+  aside {
+    display: none !important;
+  }
+}

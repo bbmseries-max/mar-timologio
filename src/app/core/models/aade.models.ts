@@ -87,6 +87,7 @@ export interface InvoiceLineItem {
   unitMeasurement: '1' | '2' | '3';
   unitPrice?: number;
   discountPercentage?: number;
+  measurementUnit?: number;
   netValue: number;
   vatRateCategory: VatRateCategory;
   vatPercentage?: number;

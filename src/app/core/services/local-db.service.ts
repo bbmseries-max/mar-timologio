@@ -184,14 +184,15 @@ export class LocalDbService extends Dexie {
     city: '',
     branch: 0,
     defaultSeries: 'A',
-    ...(existing || {}),
-    ...settings,
-    tenantId,
-    id: tenantId,
-    fiscalEnvironment: resolvedFiscalEnv,
-    isProduction: resolvedFiscalEnv === 'production',
-    updatedAt: new Date().toISOString(),
-  };
+    ...( existing || {}),
+    ...( settings || {}),
+   tenantId,
+  id: tenantId,
+  fiscalEnvironment: resolvedFiscalEnv,
+  isProduction: resolvedFiscalEnv === 'production',
+  fiscalMode: (settings?.fiscalMode ?? settings?.fiscalMode ?? existing?.fiscalMode ?? existing?.fiscalMode) || 'DIRECT_AADE',
+  updatedAt: new Date().toISOString()
+};
 
   await this.settings.put(updatedRecord);
   return tenantId;
