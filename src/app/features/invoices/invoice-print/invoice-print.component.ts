@@ -105,40 +105,28 @@ export class InvoicePrintComponent {
   private readonly printEngine = inject(InvoicePrintEngineService);
   private readonly elRef = inject(ElementRef);
 
-  // Input accepting either PrintableInvoiceData or any invoice payload
   readonly invoice = input<any>(null);
 
-  // UI state signals bound in the template
   readonly activeMode = signal<'a4' | 'thermal80'>('a4');
   readonly copied = signal<boolean>(false);
 
-  // ---------------------------------------------------------------------------
-  // Print Dispatcher
-  // ---------------------------------------------------------------------------
   public triggerBrowserPrint(event?: Event): void {
     if (event) {
       event.preventDefault();
       event.stopPropagation();
     }
-    console.log('👉 triggerBrowserPrint called in InvoicePrintComponent');
     this.triggerPrint();
   }
 
- public triggerPrint(): void {
-  // Grab the native DOM element directly from Angular ViewChild
-  const element = this.printContainerRef?.nativeElement;
-  
-  if (!element) {
-    console.error('Print container element not found via ViewChild!');
-    return;
+  public triggerPrint(): void {
+    const element = this.printContainerRef?.nativeElement;
+    if (!element) {
+      console.error('Print container element not found via ViewChild!');
+      return;
+    }
+    this.printEngine.printElement(element, this.activeMode());
   }
 
-  this.printEngine.printElement(element, this.activeMode());
-}
-
-  // ---------------------------------------------------------------------------
-  // Template Helpers (Required by invoice-print.component.html)
-  // ---------------------------------------------------------------------------
   public copyXml(): void {
     const xml = this.invoice()?.xmlPayload;
     if (xml) {
@@ -149,12 +137,14 @@ export class InvoicePrintComponent {
   }
 
   public getDocTitle(type?: string): string {
-    switch (type) {
+    switch (String(type || '').trim()) {
       case '1.1': return 'ΤΙΜΟΛΟΓΙΟ ΠΩΛΗΣΗΣ';
       case '1.2': return 'ΤΙΜΟΛΟΓΙΟ ΠΩΛΗΣΗΣ / ΕΝΔΟΚΟΙΝΟΤΙΚΕΣ';
       case '2.1': return 'ΤΙΜΟΛΟΓΙΟ ΠΑΡΟΧΗΣ ΥΠΗΡΕΣΙΩΝ';
       case '8.1': return 'ΕΝΔΟΚΟΙΝΟΤΙΚΗ ΠΑΡΟΧΗ ΥΠΗΡΕΣΙΩΝ';
-      case '9.1': return 'ΔΕΛΤΙΟ ΑΠΟΣΤΟΛΗΣ';
+      case '9.1': return 'ΣΥΣΧΕΤΙΖΟΜΕΝΟ ΔΕΛΤΙΟ ΑΠΟΣΤΟΛΗΣ';
+      case '9.2': return 'ΣΥΓΚΕΝΤΡΩΤΙΚΟ ΔΕΛΤΙΟ ΔΙΑΚΙΝΗΣΗΣ';
+      case '9.3': return 'ΑΥΤΟΝΟΜΟ ΔΕΛΤΙΟ ΑΠΟΣΤΟΛΗΣ';
       case '11.1': return 'ΑΠΟΔΕΙΞΗ ΛΙΑΝΙΚΗΣ';
       case '11.2': return 'ΑΠΟΔΕΙΞΗ ΠΑΡΟΧΗΣ ΥΠΗΡΕΣΙΩΝ';
       default: return 'ΠΑΡΑΣΤΑΤΙΚΟ';
@@ -163,7 +153,8 @@ export class InvoicePrintComponent {
 
   public isDispatch(): boolean {
     const inv = this.invoice();
-    return inv?.invoiceType === '9.1' || !!inv?.movement;
+    const t = String(inv?.invoiceType || '');
+    return ['9.1', '9.2', '9.3', '1.2'].includes(t) || !!inv?.movement;
   }
 
   public isRetailDoc(type?: string): boolean {
@@ -172,9 +163,13 @@ export class InvoicePrintComponent {
   }
 
   public getCustomerAddress(customer: any): string {
-    if (!customer?.address) return '';
-    const { street, number, postalCode, city } = customer.address;
-    return [street, number, postalCode, city].filter(Boolean).join(' ');
+    if (!customer) return '';
+    const addr = customer.address || customer;
+    const street = addr.street || '';
+    const number = addr.number || '';
+    const postalCode = addr.postalCode || '';
+    const city = addr.city || '';
+    return [street, number, postalCode, city].filter(Boolean).join(' ').trim();
   }
 
   public getPurposeLabel(purposeCode?: string | number): string {

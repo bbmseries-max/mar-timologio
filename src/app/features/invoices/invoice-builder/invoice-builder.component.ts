@@ -1,13 +1,17 @@
 import {
   Component,
   ChangeDetectionStrategy,
-  signal, untracked, ViewChild,
+  signal,
+  untracked,
+  ViewChild,
   computed,
   inject,
   effect,
   OnInit,
   OnDestroy,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { INVOICE_TYPE_GUIDES, InvoiceTypeGuide } from '@core/constants/invoice-type-info.constants';
 import { FiscalDispatcherService } from '@core/services/fiscal-dispatcher.service';
 import { EnvironmentBannerComponent } from './environment-banner.component';
 import { Subject } from 'rxjs';
@@ -16,10 +20,14 @@ import { takeUntil, debounceTime } from 'rxjs/operators';
 import { MyDataService } from '@core/services/mydata.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
-import { FormArray, FormBuilder, ReactiveFormsModule, Validators, 
-  AbstractControl, 
+import {
+  FormArray,
+  FormBuilder,
+  ReactiveFormsModule,
+  Validators,
+  AbstractControl,
   ValidationErrors,
- } from '@angular/forms';
+} from '@angular/forms';
 
 import { greekAfmValidator, isValidGreekAfm } from '@core/validators/afm.validator';
 import { LocalCustomerRecord, LocalDbService } from '@core/services/local-db.service';
@@ -79,6 +87,8 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   public readonly searchQuery = signal<string>('');
   public readonly searchResults = signal<Product[]>([]);
   public readonly isSearching = signal<boolean>(false);
+  public showTypeInfo = signal<boolean>(false);
+ 
 
   private handoverConsumed = false;
   public handoverReceived = false;
@@ -86,61 +96,61 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
 
   public get isMovementDocument(): boolean {
     const type = this.currentDocType;
-    return type === '9.1' || type === '9.3' || type === '1.2';
+    return type === '9.1' || type === '9.2' || type === '9.3' || type === '1.2';
   }
 
-  // 3. Ensure isPureDispatch getter is public:
   public get isPureDispatch(): boolean {
     const type = this.currentDocType;
-    return type === '9.1' || type === '9.3';
+    return type === '9.1' || type === '9.2' || type === '9.3';
   }
 
   public readonly computedTotals = computed(() => {
-  if (this.isPureDispatch) {
+    if (this.isPureDispatch) {
+      return {
+        totalNetValue: 0,
+        totalVatAmount: 0,
+        totalGrossValue: 0
+      };
+    }
+
+    const lines = this.lineItemsSignal();
+    let netSum = 0;
+    let vatSum = 0;
+
+    for (const line of lines) {
+      const qty = Number(line.quantity) || 0;
+      const price = Number(line.unitPrice) || 0;
+      const discount = Number(line.discountPercentage) || 0;
+
+      const baseAmount = qty * price;
+      const net = baseAmount - (baseAmount * (discount / 100));
+
+      const vatCat = Number(line.vatRateCategory) || 1;
+      let vatPct = 24;
+      if (vatCat === 2) vatPct = 13;
+      else if (vatCat === 3) vatPct = 6;
+      else if (vatCat === 4) vatPct = 17;
+      else if (vatCat === 5) vatPct = 9;
+      else if (vatCat === 6) vatPct = 4;
+      else if (vatCat === 7 || vatCat === 8) vatPct = 0;
+
+      const vat = (net * vatPct) / 100;
+
+      netSum += net;
+      vatSum += vat;
+    }
+
+    const totalNet = Math.round(netSum * 100) / 100;
+    const totalVat = Math.round(vatSum * 100) / 100;
+    const totalGross = Math.round((totalNet + totalVat) * 100) / 100;
+
     return {
-      totalNetValue: 0,
-      totalVatAmount: 0,
-      totalGrossValue: 0
+      totalNetValue: totalNet,
+      totalVatAmount: totalVat,
+      totalGrossValue: totalGross
     };
-  }
+  });
 
-  const lines = this.lineItemsSignal();
-  let netSum = 0;
-  let vatSum = 0;
-
-  for (const line of lines) {
-    const qty = Number(line.quantity) || 0;
-    const price = Number(line.unitPrice) || 0;
-    const discount = Number(line.discountPercentage) || 0;
-
-    const baseAmount = qty * price;
-    const net = baseAmount - (baseAmount * (discount / 100));
-
-    const vatCat = Number(line.vatRateCategory) || 1;
-    let vatPct = 24;
-    if (vatCat === 2) vatPct = 13;
-    else if (vatCat === 3) vatPct = 6;
-    else if (vatCat === 4) vatPct = 17;
-    else if (vatCat === 5) vatPct = 9;
-    else if (vatCat === 6) vatPct = 4;
-    else if (vatCat === 7 || vatCat === 8) vatPct = 0;
-
-    const vat = (net * vatPct) / 100;
-
-    netSum += net;
-    vatSum += vat;
-  }
-
-  const totalNet = Math.round(netSum * 100) / 100;
-  const totalVat = Math.round(vatSum * 100) / 100;
-  const totalGross = Math.round((totalNet + totalVat) * 100) / 100;
-
-  return {
-    totalNetValue: totalNet,
-    totalVatAmount: totalVat,
-    totalGrossValue: totalGross
-  };
-});
   public readonly selectedCustomerForContract = signal<ContractCustomerData | null>(null);
 
   public readonly showPrintModal = signal<boolean>(false);
@@ -149,8 +159,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   public readonly customerSearchQuery = signal<string>('');
   public readonly customerResults = signal<LocalCustomerRecord[]>([]);
 
-  // Default stays standard commercial invoice 1.1
-public readonly invoiceForm = this.fb.group({
+  public readonly invoiceForm = this.fb.group({
     series: ['A', Validators.required],
     documentNumber: [1, [Validators.required, Validators.min(1)]],
     issueDate: [new Date().toISOString().substring(0, 10), Validators.required],
@@ -160,6 +169,7 @@ public readonly invoiceForm = this.fb.group({
       legalName: ['', Validators.required],
       doy: [''],
       email: [''],
+      country: ['GR'],
       street: [''],
       number: [''],
       postalCode: [''],
@@ -220,67 +230,59 @@ public readonly invoiceForm = this.fb.group({
   }
 
   constructor() {
-  effect(() => {
-    // 1. Track signal dependency
-    const handover = this.tenantIntegration.pendingHandover();
-    if (!handover) return;
+    effect(() => {
+      const handover = this.tenantIntegration.pendingHandover();
+      if (!handover) return;
 
-    // 2. Perform all form updates and state clears untracked to prevent infinite cycles
-    untracked(() => {
-      const docType = handover.documentType || '1.1';
+      untracked(() => {
+        const docType = handover.documentType || '1.1';
 
-      // Set document type and appropriate series
-      this.invoiceForm.patchValue({
-        invoiceType: docType,
-        series: docType === '9.3' ? 'ΔΑ' : (this.invoiceForm.get('series')?.value || 'A')
+        this.invoiceForm.patchValue({
+          invoiceType: docType,
+          series: docType === '9.3' ? 'ΔΑ' : (this.invoiceForm.get('series')?.value || 'A')
+        });
+
+        if (docType === '9.3') {
+          const m = handover.movement || {};
+          this.invoiceForm.get('movement')?.patchValue({
+            vehicleNumber: m.vehicleNumber ?? null,
+            movePurpose: m.movePurpose ?? 1,
+            correlatedMark: m.correlatedMark ?? null,
+            dispatchDateTime: m.dispatchDateTime ?? new Date().toISOString().substring(0, 16),
+            addressFrom: {
+              street: m.addressFrom?.street ?? null,
+              number: m.addressFrom?.number ?? null,
+              postalCode: m.addressFrom?.postalCode ?? null,
+              city: m.addressFrom?.city ?? null,
+            },
+            addressTo: {
+              street: m.addressTo?.street ?? null,
+              number: m.addressTo?.number ?? null,
+              postalCode: m.addressTo?.postalCode ?? null,
+              city: m.addressTo?.city ?? null,
+            }
+          });
+        }
+
+        if (handover.customer || handover.supplier) {
+          const party = handover.customer || handover.supplier;
+          this.invoiceForm.controls.customer.patchValue({
+            afm: party.afm ?? '',
+            legalName: party.legalName ?? party.name ?? '',
+            doy: party.doy ?? '',
+            email: party.email ?? '',
+            street: party.address?.street ?? '',
+            number: party.address?.number ?? '',
+            postalCode: party.address?.postalCode ?? '',
+            city: party.address?.city ?? ''
+          });
+        }
+
+        this.loadLinesFromHandover(handover.items || []);
+        this.tenantIntegration.clearPending();
       });
-
-      // Handle 9.3 Digital Movement metadata safely with null fallbacks
-      if (docType === '9.3') {
-        const m = handover.movement || {};
-        this.invoiceForm.get('movement')?.patchValue({
-          vehicleNumber: m.vehicleNumber ?? null,
-          movePurpose: m.movePurpose ?? 1,
-          correlatedMark: m.correlatedMark ?? null,
-          dispatchDateTime: m.dispatchDateTime ?? new Date().toISOString().substring(0, 16),
-          addressFrom: {
-            street: m.addressFrom?.street ?? null,
-            number: m.addressFrom?.number ?? null,
-            postalCode: m.addressFrom?.postalCode ?? null,
-            city: m.addressFrom?.city ?? null,
-          },
-          addressTo: {
-            street: m.addressTo?.street ?? null,
-            number: m.addressTo?.number ?? null,
-            postalCode: m.addressTo?.postalCode ?? null,
-            city: m.addressTo?.city ?? null,
-          }
-        });
-      }
-
-      // Populate counterparty if provided in handover (for B2B 1.1 / 2.1 / 9.3)
-      if (handover.customer || handover.supplier) {
-        const party = handover.customer || handover.supplier;
-        this.invoiceForm.controls.customer.patchValue({
-          afm: party.afm ?? '',
-          legalName: party.legalName ?? party.name ?? '',
-          doy: party.doy ?? '',
-          email: party.email ?? '',
-          street: party.address?.street ?? '',
-          number: party.address?.number ?? '',
-          postalCode: party.address?.postalCode ?? '',
-          city: party.address?.city ?? ''
-        });
-      }
-
-      // Populate line items
-      this.loadLinesFromHandover(handover.items || []);
-
-      // Clear the bridge signal without re-triggering the effect
-      this.tenantIntegration.clearPending();
     });
-  });
-}
+  }
 
   public openContractModal(): void {
     const cust = this.invoiceForm.get('customer')?.value;
@@ -330,186 +332,198 @@ public readonly invoiceForm = this.fb.group({
 
   async ngOnInit(): Promise<void> {
     this.linesArray.valueChanges.subscribe(() => {
-    this.syncLines();
+      this.syncLines();
     });
-  const currentTenantId = this.auth.currentTenantId();
-  let tenantDefaultSeries = 'Α';
 
-  if (currentTenantId) {
-    const myBusiness = await this.db.getSettings(currentTenantId);
-    if (myBusiness) {
-      const b = myBusiness as any;
-      tenantDefaultSeries = b.defaultSeries || 'Α';
-    }
-  }
+    const currentTenantId = this.auth.currentTenantId();
+    let tenantDefaultSeries = 'Α';
 
-  const targetDraftId =
-    this.route.snapshot.paramMap.get('id') ||
-    this.route.snapshot.queryParamMap.get('draftId');
-
-  const queryDocType = this.route.snapshot.queryParamMap.get('type');
-
-  this.cartBridge.checkUrlPayload();
-
-  if (this.tenantIntegration.pendingHandover() && !this.handoverConsumed) {
-    this.handoverConsumed = true;
-    const handover = this.tenantIntegration.pendingHandover()!;
-    this.applyIncomingHandover(handover);
-    this.tenantIntegration.clearPending();
-  } else if (targetDraftId) {
-    const draft = await this.db.getInvoiceById(targetDraftId);
-    if (draft) {
-      this.restoreDraft(draft);
-    } else {
-      this.applyDefaultSeriesAndSeed(tenantDefaultSeries);
-    }
-  } else {
-    // Fresh invoice or dispatch note
-    if (queryDocType === '9.3') {
-  this.invoiceForm.patchValue({
-    invoiceType: '9.3',
-    series: 'ΔΕ',
-    movement: {
-      movePurpose: 4,
-      dispatchDateTime: new Date().toISOString().substring(0, 16)
-    }
-  }, { emitEvent: false });
-} else if (queryDocType === '11.1') {
-  this.invoiceForm.patchValue({
-    invoiceType: '11.1',
-    series: 'ΑΛΠ',
-    customer: {
-      legalName: 'Πελάτης Λιανικής'
-    }
-  }, { emitEvent: false });
-} else if (queryDocType === '11.2') {
-  this.invoiceForm.patchValue({
-    invoiceType: '11.2',
-    series: 'ΑΠΥ',
-    customer: {
-      legalName: 'Πελάτης Λιανικής'
-    }
-  }, { emitEvent: false });
-} else {
-  this.applyDefaultSeriesAndSeed(tenantDefaultSeries);
-}
-  }
-
-  // 1. Initialize movement & validation state based on active document type
-  const activeType = this.invoiceForm.get('invoiceType')?.value;
-  this.updateMovementDocState(activeType);
-  this.updateCustomerValidation(activeType);
-
-  if (activeType === '9.3' || activeType === '9.1' || activeType === '1.2') {
-    await this.populateIssuerLoadingAddress();
-  }
-
-  await this.updateNextDocumentNumber();
-
-  // 2. Reactive listeners (Single unified registration)
-  this.invoiceForm
-    .get('series')
-    ?.valueChanges.pipe(takeUntil(this.destroy$))
-    .subscribe(async (newSeries) => {
-      if (newSeries) {
-        await this.updateNextDocumentNumber();
+    if (currentTenantId) {
+      const myBusiness = await this.db.getSettings(currentTenantId);
+      if (myBusiness) {
+        const b = myBusiness as any;
+        tenantDefaultSeries = b.defaultSeries || 'Α';
       }
-    });
+    }
 
-  this.invoiceForm
-  .get('invoiceType')
-  ?.valueChanges.pipe(takeUntil(this.destroy$))
-  .subscribe(async (type) => {
-    this.updateMovementDocState(type);
-    this.updateCustomerValidation(type);
-    if (type === '9.3' || type === '9.1' || type === '1.2') {
+    const targetDraftId =
+      this.route.snapshot.paramMap.get('id') ||
+      this.route.snapshot.queryParamMap.get('draftId');
+
+    const queryDocType = this.route.snapshot.queryParamMap.get('type');
+
+    this.cartBridge.checkUrlPayload();
+
+    if (this.tenantIntegration.pendingHandover() && !this.handoverConsumed) {
+      this.handoverConsumed = true;
+      const handover = this.tenantIntegration.pendingHandover()!;
+      this.applyIncomingHandover(handover);
+      this.tenantIntegration.clearPending();
+    } else if (targetDraftId) {
+      const draft = await this.db.getInvoiceById(targetDraftId);
+      if (draft) {
+        this.restoreDraft(draft);
+      } else {
+        this.applyDefaultSeriesAndSeed(tenantDefaultSeries);
+      }
+    } else {
+      if (queryDocType === '9.2') {
+        this.invoiceForm.patchValue({
+          invoiceType: '9.2',
+          series: 'ΣΔ',
+          movement: {
+            movePurpose: 1,
+            dispatchDateTime: new Date().toISOString().substring(0, 16)
+          }
+        }, { emitEvent: false });
+      } else if (queryDocType === '9.3') {
+        this.invoiceForm.patchValue({
+          invoiceType: '9.3',
+          series: 'ΔΕ',
+          movement: {
+            movePurpose: 4,
+            dispatchDateTime: new Date().toISOString().substring(0, 16)
+          }
+        }, { emitEvent: false });
+      } else if (queryDocType === '11.1') {
+        this.invoiceForm.patchValue({
+          invoiceType: '11.1',
+          series: 'ΑΛΠ',
+          customer: {
+            legalName: 'Πελάτης Λιανικής'
+          }
+        }, { emitEvent: false });
+      } else if (queryDocType === '11.2') {
+        this.invoiceForm.patchValue({
+          invoiceType: '11.2',
+          series: 'ΑΠΥ',
+          customer: {
+            legalName: 'Πελάτης Λιανικής'
+          }
+        }, { emitEvent: false });
+      } else {
+        this.applyDefaultSeriesAndSeed(tenantDefaultSeries);
+      }
+    }
+
+    const activeType: string = this.invoiceForm.get('invoiceType')?.value ?? '';
+    this.updateMovementDocState(activeType);
+    this.updateCustomerValidation(activeType);
+
+    if (['9.1', '9.2', '9.3', '1.2'].includes(activeType)) {
       await this.populateIssuerLoadingAddress();
     }
-    // Refresh next invoice number for the updated series (e.g. ALP-1 vs A-1)
+
     await this.updateNextDocumentNumber();
-  });
 
-  this.invoiceForm.valueChanges
-    .pipe(takeUntil(this.destroy$), debounceTime(400))
-    .subscribe(() => {
-      this.autoSaveStatus.set('Αποθήκευση...');
-      this.debouncedSave();
-    });
-}
+    this.invoiceForm
+      .get('series')
+      ?.valueChanges.pipe(takeUntil(this.destroy$))
+      .subscribe(async (newSeries) => {
+        if (newSeries) {
+          await this.updateNextDocumentNumber();
+        }
+      });
 
+    this.invoiceForm
+      .get('invoiceType')
+      ?.valueChanges.pipe(takeUntil(this.destroy$))
+      .subscribe(async (type) => {
+        const docType: string = type ?? '';
+        this.updateMovementDocState(docType);
+        this.updateCustomerValidation(docType);
+        if (['9.1', '9.2', '9.3', '1.2'].includes(docType)) {
+          await this.populateIssuerLoadingAddress();
+        }
+        await this.updateNextDocumentNumber();
+      });
 
+    this.invoiceForm.valueChanges
+      .pipe(takeUntil(this.destroy$), debounceTime(400))
+      .subscribe(() => {
+        this.autoSaveStatus.set('Αποθήκευση...');
+        this.debouncedSave();
+      });
+  }
 
-private optionalAfmValidator() {
-  return (control: AbstractControl): ValidationErrors | null => {
-    const val = (control.value || '').trim();
-    if (!val) {
-      return null; // Valid when omitted (anonymous retail)
-    }
-    return greekAfmValidator()(control);
-  };
-}
+  private optionalAfmValidator() {
+    return (control: AbstractControl): ValidationErrors | null => {
+      const val = (control.value || '').trim();
+      if (!val) {
+        return null;
+      }
+      return greekAfmValidator()(control);
+    };
+  }
 
   public async populateIssuerLoadingAddress(): Promise<void> {
-    const currentTenantId = this.auth.currentTenantId();
+    const currentTenantId = this.auth.currentTenantId() || 'tenant_minimarket';
     
-    // 1. Try to read from Dexie settings table
-    let b: any = null;
+    let s: any = null;
     try {
-      if (currentTenantId) {
-        b = await this.db.getSettings(currentTenantId);
-      }
-      // If not found by tenantId, inspect first available record
-      if (!b) {
-        const allSettings = await (this.db as any).settings?.toArray?.();
-        if (allSettings && allSettings.length > 0) {
-          b = allSettings[0];
+      if ((this.db as any).settings) {
+        s = await (this.db as any).settings.get(currentTenantId);
+        if (!s) {
+          s = await (this.db as any).settings.where('tenantId').equals(currentTenantId).first();
         }
+        if (!s) {
+          const all = await (this.db as any).settings.toArray();
+          if (all && all.length > 0) s = all[0];
+        }
+      } else if (typeof (this.db as any).getSettings === 'function') {
+        s = await (this.db as any).getSettings(currentTenantId);
       }
     } catch (e) {
       console.warn('[populateIssuerLoadingAddress] Dexie read error:', e);
     }
 
-    // 2. Check activeTenant in Auth Service if Dexie had empty fields
     const activeTenant = (this.auth as any).activeTenant?.() || (this.auth as any).currentTenant?.();
     const tenantFiscal = activeTenant?.fiscalIdentity || activeTenant?.settings || {};
 
-    const street =
-      b?.street ||
-      b?.address?.street ||
+    const street = (
+      s?.street ||
+      s?.address?.street ||
       tenantFiscal?.street ||
       tenantFiscal?.address?.street ||
-      'Σταδίου';
+      'ΒΑΡΔΟΥΝΙΩΤΗ'
+    ).trim();
 
-    const number =
-      b?.number ||
-      b?.address?.number ||
-      tenantFiscal?.number ||
-      tenantFiscal?.address?.number ||
-      '10';
+    const rawNum = s?.number || s?.address?.number || tenantFiscal?.number || tenantFiscal?.address?.number || '11';
+    const number = (rawNum && rawNum !== '0') ? String(rawNum).trim() : '11';
 
-    const postalCode =
-      b?.postalCode ||
-      b?.address?.postalCode ||
+    const postalCode = (
+      s?.postalCode ||
+      s?.address?.postalCode ||
+      s?.zip ||
       tenantFiscal?.postalCode ||
-      tenantFiscal?.address?.postalCode ||
-      '10564';
+      tenantFiscal?.zip ||
+      '11522'
+    ).trim();
 
-    const city =
-      b?.city ||
-      b?.address?.city ||
+    const city = (
+      s?.city ||
+      s?.address?.city ||
       tenantFiscal?.city ||
-      tenantFiscal?.address?.city ||
-      'Αθήνα';
+      'ΑΘΗΝΑ'
+    ).trim();
 
-    // 3. Force values onto the controls directly
-    this.invoiceForm.get('movement.addressFrom.street')?.setValue(street, { emitEvent: false });
-    this.invoiceForm.get('movement.addressFrom.number')?.setValue(number, { emitEvent: false });
-    this.invoiceForm.get('movement.addressFrom.postalCode')?.setValue(postalCode, { emitEvent: false });
-    this.invoiceForm.get('movement.addressFrom.city')?.setValue(city, { emitEvent: false });
+    const movementGroup = this.invoiceForm.get('movement');
+    if (movementGroup?.disabled) {
+      movementGroup.enable({ emitEvent: false });
+    }
 
-    // Mark dirty & refresh validity so Angular renders in the input fields
-    this.invoiceForm.get('movement.addressFrom')?.markAsDirty();
-    this.invoiceForm.get('movement.addressFrom')?.updateValueAndValidity({ emitEvent: false });
+    const addressFromGroup = this.invoiceForm.get('movement.addressFrom');
+    if (addressFromGroup) {
+      addressFromGroup.patchValue({
+        street,
+        number,
+        postalCode,
+        city,
+      }, { emitEvent: true });
+
+      addressFromGroup.markAsDirty();
+      addressFromGroup.updateValueAndValidity({ emitEvent: false });
+    }
   }
 
   public async onSaveDraftManually(): Promise<void> {
@@ -585,16 +599,16 @@ private optionalAfmValidator() {
       issueDate: formVal.issueDate || new Date().toISOString().split('T')[0],
       invoiceType: formVal.invoiceType || '1.1',
       issuer: {
-        legalName: settings?.legalName || 'MARANTH TEST ENTERPRISE',
-        tradeName: settings?.tradeName || settings?.legalName || 'MARANTH TEST ENTERPRISE',
+        legalName: settings?.legalName || 'MARANTH MON IKE',
+        tradeName: settings?.companyName || settings?.legalName || 'MARANTH MON IKE',
         afm: settings?.afm || '067424104',
-        doy: settings?.doy || 'ΔΟΥ ΑΘΗΝΩΝ',
-        branch: 0,
+        doy: settings?.doy || 'ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ',
+        branch: Number(settings?.branch ?? 0),
         address: {
-          street: settings?.street || 'Σταδίου',
-          number: settings?.number || '10',
-          postalCode: settings?.postalCode || '10564',
-          city: settings?.city || 'Αθήνα',
+          street: settings?.street || 'ΒΑΡΔΟΥΝΙΩΤΗ',
+          number: settings?.number || '11',
+          postalCode: settings?.postalCode || '11522',
+          city: settings?.city || 'ΑΘΗΝΑ',
         },
         phone: settings?.phone || '',
         email: settings?.email || '',
@@ -660,7 +674,7 @@ private optionalAfmValidator() {
       this.linesArray.clear();
       if (Array.isArray(payload.lines) && payload.lines.length > 0) {
         const currentType = String(payload.invoiceType ?? payload.documentType ?? '').trim();
-        const isDeltio = currentType === '9.1' || currentType === '9.3';
+        const isDeltio = currentType === '9.1' || currentType === '9.2' || currentType === '9.3';
 
         for (const l of payload.lines) {
           this.linesArray.push(
@@ -690,40 +704,40 @@ private optionalAfmValidator() {
   }
 
   public loadLinesFromHandover(items: any[]): void {
-  if (!items || !items.length) return;
+    if (!items || !items.length) return;
 
-  this.linesArray.clear();
+    this.linesArray.clear();
 
-  for (const item of items) {
-    const qty = Number(item.quantity || 1);
-    const unitPrice = Number(item.price || item.unitPrice || 0);
-    const vatRate = Number(item.vatRate ?? item.vatPercentage ?? 24);
-    const netValue = +(qty * unitPrice).toFixed(2);
-    const vatAmount = +(netValue * (vatRate / 100)).toFixed(2);
-    const totalValue = +(netValue + vatAmount).toFixed(2);
+    for (const item of items) {
+      const qty = Number(item.quantity || 1);
+      const unitPrice = Number(item.price || item.unitPrice || 0);
+      const vatRate = Number(item.vatRate ?? item.vatPercentage ?? 24);
+      const netValue = +(qty * unitPrice).toFixed(2);
+      const vatAmount = +(netValue * (vatRate / 100)).toFixed(2);
+      const totalValue = +(netValue + vatAmount).toFixed(2);
 
-    let vatCat = 1;
-    if (vatRate === 13) vatCat = 2;
-    else if (vatRate === 6) vatCat = 3;
-    else if (vatRate === 0) vatCat = 7;
+      let vatCat = 1;
+      if (vatRate === 13) vatCat = 2;
+      else if (vatRate === 6) vatCat = 3;
+      else if (vatRate === 0) vatCat = 7;
 
-    const lineGroup = this.fb.group({
-      description: [item.description || item.name || 'Εμπόρευμα', Validators.required],
-      quantity: [qty, [Validators.required, Validators.min(0.01)]],
-      measurementUnit: [item.measurementUnit || 1, Validators.required],
-      unitPrice: [this.isPureDispatch ? 0 : unitPrice, [Validators.required, Validators.min(0)]],
-      discountPercentage: [0],
-      netValue: [{ value: this.isPureDispatch ? 0 : netValue, disabled: true }],
-      vatRateCategory: [this.isPureDispatch ? 8 : vatCat],
-      vatAmount: [{ value: this.isPureDispatch ? 0 : vatAmount, disabled: true }],
-      totalValue: [{ value: this.isPureDispatch ? 0 : totalValue, disabled: true }]
-    });
+      const lineGroup = this.fb.group({
+        description: [item.description || item.name || 'Εμπόρευμα', Validators.required],
+        quantity: [qty, [Validators.required, Validators.min(0.01)]],
+        measurementUnit: [item.measurementUnit || 1, Validators.required],
+        unitPrice: [this.isPureDispatch ? 0 : unitPrice, [Validators.required, Validators.min(0)]],
+        discountPercentage: [0],
+        netValue: [{ value: this.isPureDispatch ? 0 : netValue, disabled: true }],
+        vatRateCategory: [this.isPureDispatch ? 8 : vatCat],
+        vatAmount: [{ value: this.isPureDispatch ? 0 : vatAmount, disabled: true }],
+        totalValue: [{ value: this.isPureDispatch ? 0 : totalValue, disabled: true }]
+      });
 
-    this.linesArray.push(lineGroup);
+      this.linesArray.push(lineGroup);
+    }
+
+    this.syncLines();
   }
-
-  this.syncLines();
-}
 
   private applyIncomingHandover(data: ExternalDocumentHandover): void {
     if (!data || !data.items || data.items.length === 0) return;
@@ -780,24 +794,24 @@ private optionalAfmValidator() {
   }
 
   public setSupplierReturnPreset(): void {
-  const returnSeries = 'ΕΠΙΣΤΡ';
+    const returnSeries = 'ΕΠΙΣΤΡ';
 
-  this.invoiceForm.patchValue(
-    {
-      invoiceType: '9.3',
-      series: returnSeries,
-      movement: {
-        vehicleNumber: '',
-        movePurpose: 4, // 4: Επιστροφή (Return) in AADE myDATA specs
-        dispatchDateTime: new Date().toISOString().substring(0, 16),
+    this.invoiceForm.patchValue(
+      {
+        invoiceType: '9.3',
+        series: returnSeries,
+        movement: {
+          vehicleNumber: '',
+          movePurpose: 4,
+          dispatchDateTime: new Date().toISOString().substring(0, 16),
+        },
       },
-    },
-    { emitEvent: false }
-  );
+      { emitEvent: false }
+    );
 
-  this.updateMovementDocState('9.3');
-  this.updateNextDocumentNumber();
-}
+    this.updateMovementDocState('9.3');
+    this.updateNextDocumentNumber();
+  }
 
   public async onCustomerSearch(query: string): Promise<void> {
     let clean = (query || '').replace(/\D/g, '');
@@ -817,19 +831,27 @@ private optionalAfmValidator() {
   }
 
   public selectCustomer(c: LocalCustomerRecord): void {
-    // 1. Resolve address fields whether they sit on root or nested in c.address
     const street = (c.address?.street || (c as any).street || '').trim();
     const number = (c.address?.number || (c as any).number || '').trim();
     const postalCode = (c.address?.postalCode || (c as any).postalCode || '').trim();
     const city = (c.address?.city || (c as any).city || '').trim();
 
-    // 2. Patch customer details
+    let country = ((c.address as any)?.country || (c as any).country || 'GR').trim().toUpperCase();
+    const rawAfm = (c.afm || '').trim();
+    if (country === 'GR' && /^[A-Z]{2}/.test(rawAfm)) {
+      const prefix = rawAfm.slice(0, 2).toUpperCase();
+      if (prefix !== 'EL') {
+        country = prefix;
+      }
+    }
+
     this.invoiceForm.get('customer')?.patchValue(
       {
-        afm: c.afm || '',
+        afm: rawAfm,
         legalName: c.legalName || '',
         doy: c.doy ?? '',
         email: c.email ?? '',
+        country,
         street,
         number,
         postalCode,
@@ -838,7 +860,6 @@ private optionalAfmValidator() {
       { emitEvent: true }
     );
 
-    // 3. Populate delivery address if movement document
     if (this.isMovementDocument) {
       const movementGroup = this.invoiceForm.get('movement');
       if (movementGroup?.disabled) {
@@ -930,20 +951,20 @@ private optionalAfmValidator() {
   }
 
   private updateMovementDocState(type: string | null | undefined): void {
-  const isMov = type === '9.1' || type === '9.3' || type === '1.2';
-  const movementCtrl = this.invoiceForm.get('movement');
-  const vehicleCtrl = this.invoiceForm.get('movement.vehicleNumber');
+    const isMov = ['9.1', '9.2', '9.3', '1.2'].includes(String(type || ''));
+    const movementCtrl = this.invoiceForm.get('movement');
+    const vehicleCtrl = this.invoiceForm.get('movement.vehicleNumber');
 
-  if (isMov) {
-    movementCtrl?.enable({ emitEvent: false });
-    vehicleCtrl?.setValidators([Validators.required]);
-  } else {
-    movementCtrl?.disable({ emitEvent: false });
-    vehicleCtrl?.clearValidators();
+    if (isMov) {
+      movementCtrl?.enable({ emitEvent: false });
+      vehicleCtrl?.setValidators([Validators.required]);
+    } else {
+      movementCtrl?.disable({ emitEvent: false });
+      vehicleCtrl?.clearValidators();
+    }
+    vehicleCtrl?.updateValueAndValidity({ emitEvent: false });
+    this.syncLines();
   }
-  vehicleCtrl?.updateValueAndValidity({ emitEvent: false });
-  this.syncLines();
-}
 
   public seedInitialLine(): void {
     this.linesArray.clear();
@@ -1089,7 +1110,6 @@ private optionalAfmValidator() {
     const discount = Number(line.get('discountPercentage')?.value) || 0;
     const vatCat = Number(line.get('vatRateCategory')?.value || 1);
 
-    // If pure dispatch, keep monetary values at 0
     if (this.isPureDispatch) {
       line.patchValue({
         netValue: 0,
@@ -1120,123 +1140,105 @@ private optionalAfmValidator() {
   }
 
   public recalculateInvoiceTotals(): void {
-  if (this.isPureDispatch) {
+    if (this.isPureDispatch) {
+      this.invoiceForm.get('totals')?.patchValue({
+        totalNetValue: 0,
+        totalVatAmount: 0,
+        totalGrossValue: 0,
+      }, { emitEvent: false });
+      return;
+    }
+
+    const rawLines = this.linesArray.getRawValue() as any[];
+
+    let totalNet = 0;
+    let totalVat = 0;
+
+    for (const line of rawLines) {
+      const qty = Number(line.quantity) || 0;
+      const price = Number(line.unitPrice) || 0;
+      const discount = Number(line.discountPercentage) || 0;
+
+      const baseGross = qty * price;
+      const net = baseGross - (baseGross * (discount / 100));
+
+      const vatCat = Number(line.vatRateCategory) || 1;
+      let vatPct = 24;
+      if (vatCat === 2) vatPct = 13;
+      else if (vatCat === 3) vatPct = 6;
+      else if (vatCat === 4) vatPct = 17;
+      else if (vatCat === 5) vatPct = 9;
+      else if (vatCat === 6) vatPct = 4;
+      else if (vatCat === 7 || vatCat === 8) vatPct = 0;
+
+      const vat = (net * vatPct) / 100;
+
+      totalNet += net;
+      totalVat += vat;
+    }
+
+    const netRounded = Math.round(totalNet * 100) / 100;
+    const vatRounded = Math.round(totalVat * 100) / 100;
+    const grossRounded = Math.round((netRounded + vatRounded) * 100) / 100;
+
     this.invoiceForm.get('totals')?.patchValue({
-      totalNetValue: 0,
-      totalVatAmount: 0,
-      totalGrossValue: 0,
-    }, { emitEvent: false });
-    return;
+      totalNetValue: netRounded,
+      totalVatAmount: vatRounded,
+      totalGrossValue: grossRounded,
+    });
   }
 
-  const rawLines = this.linesArray.getRawValue() as any[];
+  private parseGsisAddress(rawAddress: string | null | undefined): {
+    street: string;
+    number: string;
+    postalCode: string;
+    city: string;
+  } {
+    const fallback = { street: '', number: '1', postalCode: '', city: '' };
+    if (!rawAddress || typeof rawAddress !== 'string') return fallback;
 
-  let totalNet = 0;
-  let totalVat = 0;
+    const cleaned = rawAddress.trim().replace(/\s+/g, ' ');
+    const allZipMatches = [...cleaned.matchAll(/\b(\d{5})\b/g)];
+    const zipMatch = allZipMatches.length > 0 ? allZipMatches[allZipMatches.length - 1] : null;
 
-  for (const line of rawLines) {
-    const qty = Number(line.quantity) || 0;
-    const price = Number(line.unitPrice) || 0;
-    const discount = Number(line.discountPercentage) || 0;
+    if (zipMatch && zipMatch.index !== undefined) {
+      const postalCode = zipMatch[1];
+      let beforeZip = cleaned.substring(0, zipMatch.index).trim();
+      beforeZip = beforeZip.replace(/[\-–—.,]+$/, '').trim();
 
-    const baseGross = qty * price;
-    const net = baseGross - (baseGross * (discount / 100));
+      let afterZip = cleaned.substring(zipMatch.index + 5).replace(/^[\s\-–—.,]+/, '').trim();
+      afterZip = afterZip.replace(/[\s\-–—]+(GR|GREECE|ΕΛΛΑΔΑ)$/i, '').trim();
 
-    const vatCat = Number(line.vatRateCategory) || 1;
-    let vatPct = 24;
-    if (vatCat === 2) vatPct = 13;
-    else if (vatCat === 3) vatPct = 6;
-    else if (vatCat === 4) vatPct = 17;
-    else if (vatCat === 5) vatPct = 9;
-    else if (vatCat === 6) vatPct = 4;
-    else if (vatCat === 7 || vatCat === 8) vatPct = 0;
+      const numMatch = beforeZip.match(/^(.*?)(?:\s+(\d+[A-Za-z\u0370-\u03ff]*))$/);
 
-    const vat = (net * vatPct) / 100;
+      let street = beforeZip;
+      let number = '1';
 
-    totalNet += net;
-    totalVat += vat;
-  }
-
-  const netRounded = Math.round(totalNet * 100) / 100;
-  const vatRounded = Math.round(totalVat * 100) / 100;
-  const grossRounded = Math.round((netRounded + vatRounded) * 100) / 100;
-
-  this.invoiceForm.get('totals')?.patchValue({
-    totalNetValue: netRounded,
-    totalVatAmount: vatRounded,
-    totalGrossValue: grossRounded,
-  });
-}
-
-  /**
-   * Deconstructs raw combined GSIS strings like:
-   * "ΑΓΙΑΣ ΜΑΡΙΝΑΣ 26        19400 - ΚΟΡΩΠΙ"
-   * into street, number, postalCode, and city.
-   */
- private parseGsisAddress(rawAddress: string | null | undefined): {
-  street: string;
-  number: string;
-  postalCode: string;
-  city: string;
-} {
-  const fallback = { street: '', number: '1', postalCode: '', city: '' };
-  if (!rawAddress || typeof rawAddress !== 'string') return fallback;
-
-  // 1. Normalize whitespace, tabs, and special characters
-  const cleaned = rawAddress.trim().replace(/\s+/g, ' ');
-
-  // 2. Match all 5-digit sequences, preferring the last one before city
-  const allZipMatches = [...cleaned.matchAll(/\b(\d{5})\b/g)];
-  const zipMatch = allZipMatches.length > 0 ? allZipMatches[allZipMatches.length - 1] : null;
-
-  if (zipMatch && zipMatch.index !== undefined) {
-    const postalCode = zipMatch[1];
-    let beforeZip = cleaned.substring(0, zipMatch.index).trim();
-    
-    // Clean trailing hyphens, dots, commas before zip
-    beforeZip = beforeZip.replace(/[\-–—.,]+$/, '').trim();
-
-    // Clean leading/trailing punctuation after zip
-    let afterZip = cleaned.substring(zipMatch.index + 5).replace(/^[\s\-–—.,]+/, '').trim();
-
-    // Remove any trailing country code like "GR" or "ΕΛΛΑΔΑ" if attached to city
-    afterZip = afterZip.replace(/[\s\-–—]+(GR|GREECE|ΕΛΛΑΔΑ)$/i, '').trim();
-
-    // 3. Extract street number:
-    // Match trailing digits/letters, but ensure it's not "0" or part of "ΧΛΜ 11"
-    const numMatch = beforeZip.match(/^(.*?)(?:\s+(\d+[A-Za-z\u0370-\u03ff]*))$/);
-
-    let street = beforeZip;
-    let number = '1';
-
-    if (numMatch && numMatch[2]) {
-      const candidateNum = numMatch[2].trim();
-      // If candidate is "0" or beforeZip is a highway format, don't treat 0 as number
-      if (candidateNum !== '0') {
-        street = numMatch[1]?.trim() || beforeZip;
-        number = candidateNum;
-      } else {
-        // Strip trailing zero from street name if it was a VIES placeholder
-        street = numMatch[1]?.trim() || beforeZip;
+      if (numMatch && numMatch[2]) {
+        const candidateNum = numMatch[2].trim();
+        if (candidateNum !== '0') {
+          street = numMatch[1]?.trim() || beforeZip;
+          number = candidateNum;
+        } else {
+          street = numMatch[1]?.trim() || beforeZip;
+        }
       }
+
+      return {
+        street: street || beforeZip,
+        number: number || '1',
+        postalCode: postalCode,
+        city: afterZip || '',
+      };
     }
 
     return {
-      street: street || beforeZip,
-      number: number || '1',
-      postalCode: postalCode,
-      city: afterZip || '', // Do not force 'Αθήνα' if outside Attica
+      street: cleaned,
+      number: '1',
+      postalCode: '',
+      city: '',
     };
   }
-
-  // Fallback when no 5-digit zip code exists
-  return {
-    street: cleaned,
-    number: '1',
-    postalCode: '',
-    city: '',
-  };
-}
 
   public async triggerGsisLookup(): Promise<void> {
     const afmControl = this.invoiceForm.get('customer.afm');
@@ -1264,7 +1266,6 @@ private optionalAfmValidator() {
     this.gsisLoading.set(true);
     this.gsisError.set(null);
 
-    // GsisLookupService handles: 1. Dexie cache -> 2. GSIS SOAP 1.2 -> 3. EU VIES fallback
     this.gsisService.lookupAfm(rawAfm)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -1308,9 +1309,7 @@ private optionalAfmValidator() {
 
     const legalName = (data.legalName || data.name || data.onomasia || '').trim();
     const doy = (data.doyDescr || data.doy || data.doy_descr || '').trim();
-    
 
-    // Map from either postalAddress* (GSIS) or street/number (Local/VIES)
     let street = (
       data.postalAddress ||
       data.postal_address ||
@@ -1343,7 +1342,6 @@ private optionalAfmValidator() {
       ''
     ).trim();
 
-    // Deconstruct street if it contains postal code or combined address
     if (street && (!postalCode || !city || /\d{5}/.test(street))) {
       const parsed = this.parseGsisAddress(street);
       street = parsed.street || street;
@@ -1354,9 +1352,7 @@ private optionalAfmValidator() {
 
     if (!number) number = '1';
 
-    const normalizedNumber = (number && number !== '0' && number !== '00') ? number : '1';
-
-   const customerGroup = this.invoiceForm.get('customer');
+    const customerGroup = this.invoiceForm.get('customer');
     if (customerGroup) {
       customerGroup.patchValue(
         {
@@ -1373,7 +1369,6 @@ private optionalAfmValidator() {
       customerGroup.updateValueAndValidity({ emitEvent: true });
     }
 
-    // Auto-fill delivery address for movement documents
     if (this.isMovementDocument) {
       const addressTo = this.invoiceForm.get('movement.addressTo');
       if (addressTo) {
@@ -1382,43 +1377,66 @@ private optionalAfmValidator() {
     }
   }
 
-public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
+  public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
     try {
       this.autoSaveStatus.set('Διαβίβαση σε εξέλιξη...');
 
-      // 1. Delegate transmission to FiscalDispatcherService
       const result = await this.fiscalDispatcher.transmit(invoice);
 
       if (result.success && result.mark) {
-        const invoiceId = invoice.id != null ? String(invoice.id) : null;
-        const officialQr =
+        const invoiceId = invoice.id != null ? String(invoice.id) : (this.currentDraftId() || crypto.randomUUID());
+        const rawResult = result as any;
+        const officialUid: string = result.uid || rawResult.invoiceUid || '';
+        const officialQr: string =
           result.qrUrl ??
           (result.mark ? `https://mydataapidev.aade.gr/TimologioQR/QRInfo?q=${result.mark}` : '');
 
-        if (invoiceId) {
-          await this.db.invoices.update(invoiceId, {
-            mark: result.mark,
-            uid: result.uid,
-            qrUrl: officialQr,
-            providerSignature: result.providerSignature ?? undefined,
-            transmissionStatus: 'TRANSMITTED',
-            updatedAt: Date.now(),
-          });
-        }
+        const formRaw = this.invoiceForm.getRawValue();
+        const safeCustomerAfm = invoice.customerAfm || formRaw.customer?.afm || '';
+        const safeCustomerName = invoice.customerName || formRaw.customer?.legalName || '';
 
-        // Inform the user immediately by showing the completion modal
-        this.completedInvoice.set({
-          id: invoice.id,
-          series: invoice.series,
-          documentNumber: invoice.documentNumber,
-          mark: result.mark,
-          grossTotal: invoice.totalGross || this.computedTotals().totalGrossValue,
-          customerName: invoice.customerName || '—',
-          customerAfm: invoice.customerAfm || '—',
-          issueDate: invoice.issueDate,
+        const existingRecord = await this.db.invoices.get(invoiceId);
+
+        const finalizedInvoice: LocalInvoiceRecord = {
+          ...(existingRecord || invoice),
+          id: invoiceId,
+          tenantId: this.auth.currentTenantId() || 'tenant_minimarket',
+          series: invoice.series || 'DEV',
+          documentNumber: Number(invoice.documentNumber) || 1,
+          issueDate: invoice.issueDate || new Date().toISOString().split('T')[0],
+          invoiceType: invoice.invoiceType || '1.1',
+          customerAfm: safeCustomerAfm,
+          customerName: safeCustomerName,
+          totalNet: Number(invoice.totalNet ?? 0),
+          totalVat: Number(invoice.totalVat ?? 0),
+          totalGross: Number(invoice.totalGross ?? this.computedTotals().totalGrossValue ?? 0),
+          mark: String(result.mark),
+          uid: officialUid,
           qrUrl: officialQr,
-          invoiceType: invoice.invoiceType,
+          providerSignature: result.providerSignature ?? undefined,
+          transmissionStatus: 'TRANSMITTED',
+          payloadJson: invoice.payloadJson || JSON.stringify({
+            ...formRaw,
+            lines: this.lineItemsSignal(),
+          }),
+          updatedAt: Date.now(),
+        };
+
+        await this.db.invoices.put(finalizedInvoice);
+
+        this.completedInvoice.set({
+          id: invoiceId,
+          series: finalizedInvoice.series,
+          documentNumber: finalizedInvoice.documentNumber,
+          mark: String(result.mark),
+          grossTotal: finalizedInvoice.totalGross,
+          customerName: finalizedInvoice.customerName || '—',
+          customerAfm: finalizedInvoice.customerAfm || '—',
+          issueDate: finalizedInvoice.issueDate,
+          qrUrl: officialQr,
+          invoiceType: finalizedInvoice.invoiceType,
         });
+
       } else {
         const invoiceId = invoice.id != null ? String(invoice.id) : null;
         if (invoiceId) {
@@ -1436,65 +1454,73 @@ public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
     }
   }
 
-  /** User clicked "Εκτύπωση Τώρα" */
   public async onPrintCompletedInvoice(): Promise<void> {
     const completed = this.completedInvoice();
     if (!completed) return;
-    
-    // Fetch clean Dexie record and open print modal
-    const inv = await this.db.invoices.get(String(completed.id));
-    if (inv) {
-      await this.openVerifiedPreview(inv, completed.mark, undefined, completed.qrUrl);
+
+    const markStr = String(completed.mark ?? '');
+
+    let archivedInvoice = await this.db.invoices
+      .where('mark')
+      .equals(markStr)
+      .first();
+
+    if (!archivedInvoice && completed.id) {
+      archivedInvoice = await this.db.invoices.get(String(completed.id));
     }
+
+    if (!archivedInvoice) {
+      console.error('Invoice not found in archive yet:', markStr);
+      return;
+    }
+
+    await this.openVerifiedPreview(
+      archivedInvoice,
+      archivedInvoice.mark ?? markStr,
+      undefined,
+      archivedInvoice.qrUrl ?? completed.qrUrl ?? ''
+    );
   }
 
-  /** User clicked "Έκδοση Νέου Παραστατικού" */
   public async onStartNextInvoice(): Promise<void> {
     const tenantId = this.auth.currentTenantId();
     const series = this.invoiceForm.get('series')?.value || 'A';
     
-    // 1. Advance to next document number
     if (tenantId) {
       const nextAa = await this.db.getNextDocumentNumber(tenantId, series);
       this.currentDraftId.set(crypto.randomUUID());
       this.invoiceForm.get('documentNumber')?.setValue(nextAa, { emitEvent: false });
     }
 
-    // 2. Reset form
     this.linesArray.clear();
     this.seedInitialLine();
     this.invoiceForm.get('customer')?.reset();
     this.invoiceForm.get('movement.addressTo')?.reset();
     this.invoiceForm.get('movement.vehicleNumber')?.reset();
 
-    // 3. Dismiss confirmation dialog
     this.completedInvoice.set(null);
   }
 
-  
-
   public readonly completedInvoice = signal<{
-  id: string | number;
-  series: string;
-  documentNumber: string | number;
-  mark: string;
-  grossTotal: number;
-  customerName: string;
-  customerAfm: string;
-  issueDate: string;
-  qrUrl?: string;
-  invoiceType: string;
-} | null>(null);
+    id: string | number;
+    series: string;
+    documentNumber: string | number;
+    mark: string;
+    grossTotal: number;
+    customerName: string;
+    customerAfm: string;
+    issueDate: string;
+    qrUrl?: string;
+    invoiceType: string;
+  } | null>(null);
 
   private syncLines(): void {
     const isDeltio = this.isPureDispatch;
     const docType = String(this.currentDocType || '1.1').trim();
     
-    // Exact classification flags
     const isRetailGoods = docType === '11.1';
     const isRetailServices = docType === '11.2';
     const isWholesaleServices = docType === '2.1';
-    const isServices = isWholesaleServices || isRetailServices;
 
     if (isDeltio) {
       for (let i = 0; i < this.linesArray.length; i++) {
@@ -1514,10 +1540,8 @@ public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
       const unitPr = isDeltio ? 0 : Number(r.unitPrice) || 0;
       const discount = Number(r.discountPercentage) || 0;
 
-      // Read measurement unit from either property name
       const resolvedUnit = String(r.measurementUnit ?? r.unitMeasurement ?? '1');
 
-      // Ensure net value accounts for quantity and discount if netValue wasn't pre-computed
       let netVal = 0;
       if (!isDeltio) {
         if (Number(r.netValue) > 0) {
@@ -1540,15 +1564,8 @@ public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
       const vatAmt = isDeltio ? 0 : Number(((netVal * vatPct) / 100).toFixed(2));
       const totVal = isDeltio ? 0 : Number((netVal + vatAmt).toFixed(2));
 
-      // Correct E3 & Category pairings:
-      // 11.1 -> category1_1 + E3_561_003
-      // 11.2 -> category1_3 + E3_561_004
-      // 2.1  -> category1_3 + E3_561_001
-      // 1.1  -> category1_1 + E3_561_001
-      // Corrected E3 & Category pairings for AADE compliance:
       let defaultClassificationCategory = 'category1_1';
       let defaultClassificationType = 'E3_561_001';
-      
 
       if (isRetailGoods) {
         defaultClassificationCategory = 'category1_1';
@@ -1592,7 +1609,6 @@ public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
 
     this.lineItemsSignal.set(items);
 
-    // --- Compute and set Totals ---
     const totalNet = items.reduce((sum, item) => sum + (Number(item.netValue) || 0), 0);
     const totalVat = items.reduce((sum, item) => sum + (Number(item.vatAmount) || 0), 0);
     const totalGross = items.reduce((sum, item) => sum + (Number(item.totalValue) || 0), 0);
@@ -1616,99 +1632,95 @@ public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
   }
 
   private async openVerifiedPreview(
-  invoiceOrId: LocalInvoiceRecord | string,
-  mark: string,
-  uid?: string,
-  qrUrl?: string
-): Promise<void> {
-  // 1. Resolve fresh record from Dexie
-  let invoice: any = null;
-  if (typeof invoiceOrId === 'string') {
-    invoice = await this.db.invoices.get(invoiceOrId);
-  } else if (invoiceOrId?.id) {
-    invoice = (await this.db.invoices.get(String(invoiceOrId.id))) || invoiceOrId;
-  } else {
-    invoice = invoiceOrId;
-  }
+    invoiceOrId: LocalInvoiceRecord | string,
+    mark: string,
+    uid?: string,
+    qrUrl?: string
+  ): Promise<void> {
+    let invoice: any = null;
+    if (typeof invoiceOrId === 'string') {
+      invoice = await this.db.invoices.get(invoiceOrId);
+    } else if (invoiceOrId?.id) {
+      invoice = (await this.db.invoices.get(String(invoiceOrId.id))) || invoiceOrId;
+    } else {
+      invoice = invoiceOrId;
+    }
 
-  // 2. Robust tenant settings resolution (identical to onOpenPreview)
-  const tenantId = this.auth?.currentTenantId?.() || 'tenant_minimarket';
-  let settings: any = typeof (this.db as any).getSettingsForTenant === 'function'
-    ? await (this.db as any).getSettingsForTenant(tenantId)
-    : await (this.db as any).getSettings?.(tenantId);
+    const tenantId = this.auth?.currentTenantId?.() || 'tenant_minimarket';
+    let settings: any = typeof (this.db as any).getSettingsForTenant === 'function'
+      ? await (this.db as any).getSettingsForTenant(tenantId)
+      : await (this.db as any).getSettings?.(tenantId);
 
-  if (!settings?.afm) {
-    const all = await (this.db as any).settings?.toArray?.();
-    if (all && all.length > 0) settings = all[0];
-  }
+    if (!settings?.afm) {
+      const all = await (this.db as any).settings?.toArray?.();
+      if (all && all.length > 0) settings = all[0];
+    }
 
-  // 3. Extract payload JSON if stored
-  let parsedPayload: any = {};
-  try {
-    parsedPayload = typeof invoice.payloadJson === 'string'
-      ? JSON.parse(invoice.payloadJson)
-      : invoice.payloadJson || {};
-  } catch {
-    parsedPayload = {};
-  }
+    let parsedPayload: any = {};
+    try {
+      parsedPayload = typeof invoice.payloadJson === 'string'
+        ? JSON.parse(invoice.payloadJson)
+        : invoice.payloadJson || {};
+    } catch {
+      parsedPayload = {};
+    }
 
-  const custRaw = parsedPayload.customer || invoice.customer || {};
+    const custRaw = parsedPayload.customer || invoice.customer || {};
 
-  // 4. Construct unified printable model matching Arxio
-  const printablePayload: any = {
-    series: invoice.series || 'DEV',
-    documentNumber: Number(invoice.documentNumber) || 1,
-    issueDate: invoice.issueDate || new Date().toISOString().split('T')[0],
-    invoiceType: invoice.invoiceType || '1.1',
-    issuer: {
-      legalName: settings?.legalName || 'MARANTH TEST ENTERPRISE',
-      tradeName: settings?.tradeName || settings?.legalName || 'MARANTH TEST ENTERPRISE',
-      afm: settings?.afm || '067424104',
-      doy: settings?.doy || 'ΔΟΥ ΑΘΗΝΩΝ',
-      branch: Number(settings?.branch ?? 0),
-      address: {
-        street: settings?.street || 'Σταδίου',
-        number: settings?.number || '10',
-        postalCode: settings?.postalCode || '10564',
-        city: settings?.city || 'Αθήνα',
+    const printablePayload: any = {
+      series: invoice.series || 'DEV',
+      documentNumber: Number(invoice.documentNumber) || 1,
+      issueDate: invoice.issueDate || new Date().toISOString().split('T')[0],
+      invoiceType: invoice.invoiceType || '1.1',
+      issuer: {
+        legalName: settings?.legalName || 'MARANTH MON IKE',
+        tradeName: settings?.companyName || settings?.legalName || 'MARANTH MON IKE',
+        afm: settings?.afm || '067424104',
+        doy: settings?.doy || 'ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ',
+        branch: Number(settings?.branch ?? 0),
+        address: {
+          street: settings?.street || 'ΒΑΡΔΟΥΝΙΩΤΗ',
+          number: settings?.number || '11',
+          postalCode: settings?.postalCode || '11522',
+          city: settings?.city || 'ΑΘΗΝΑ',
+        },
+        phone: settings?.phone || '',
+        email: settings?.email || '',
       },
-      phone: settings?.phone || '',
-      email: settings?.email || '',
-    },
-    customer: {
-      id: custRaw.id || 'cust-1',
-      legalName: custRaw.legalName || invoice.customerName || 'ΙΔΙΩΤΗΣ / ΠΕΛΑΤΗΣ',
-      afm: custRaw.afm || invoice.customerAfm || '—',
-      doy: custRaw.doy || '—',
-      email: custRaw.email || '',
-      address: {
-        street: custRaw.street || '',
-        number: custRaw.number || '',
-        postalCode: custRaw.postalCode || '',
-        city: custRaw.city || '',
+      customer: {
+        id: custRaw.id || 'cust-1',
+        legalName: custRaw.legalName || invoice.customerName || 'ΙΔΙΩΤΗΣ / ΠΕΛΑΤΗΣ',
+        afm: custRaw.afm || invoice.customerAfm || '—',
+        doy: custRaw.doy || '—',
+        email: custRaw.email || '',
+        address: {
+          street: custRaw.street || '',
+          number: custRaw.number || '',
+          postalCode: custRaw.postalCode || '',
+          city: custRaw.city || '',
+        },
       },
-    },
-    lines: parsedPayload.lines || this.lineItemsSignal(),
-    totals: {
-      totalNetValue: Number(invoice.totalNet ?? parsedPayload.totals?.totalNetValue ?? 0),
-      totalVatAmount: Number(invoice.totalVat ?? parsedPayload.totals?.totalVatAmount ?? 0),
-      totalWithheldAmount: 0,
-      totalFeesAmount: 0,
-      totalStampDutyAmount: 0,
-      totalOtherTaxesAmount: 0,
-      totalDeductionsAmount: 0,
-      totalGrossValue: Number(invoice.totalGross ?? parsedPayload.totals?.totalGrossValue ?? 0),
-    },
-    mark: mark || invoice.mark,
-    uid: uid || invoice.uid || '',
-    qrUrl: qrUrl || invoice.qrUrl || (mark ? `https://mydataapidev.aade.gr/TimologioQR/QRInfo?q=${mark}` : ''),
-    xmlPayload: invoice.xmlPayload || '',
-    movement: parsedPayload.movement || invoice.movement || undefined,
-  };
+      lines: parsedPayload.lines || this.lineItemsSignal(),
+      totals: {
+        totalNetValue: Number(invoice.totalNet ?? parsedPayload.totals?.totalNetValue ?? 0),
+        totalVatAmount: Number(invoice.totalVat ?? parsedPayload.totals?.totalVatAmount ?? 0),
+        totalWithheldAmount: 0,
+        totalFeesAmount: 0,
+        totalStampDutyAmount: 0,
+        totalOtherTaxesAmount: 0,
+        totalDeductionsAmount: 0,
+        totalGrossValue: Number(invoice.totalGross ?? parsedPayload.totals?.totalGrossValue ?? 0),
+      },
+      mark: mark || invoice.mark,
+      uid: uid || invoice.uid || '',
+      qrUrl: qrUrl || invoice.qrUrl || (mark ? `https://mydataapidev.aade.gr/TimologioQR/QRInfo?q=${mark}` : ''),
+      xmlPayload: invoice.xmlPayload || '',
+      movement: parsedPayload.movement || invoice.movement || undefined,
+    };
 
-  this.printableData.set(printablePayload);
-  this.showPrintModal.set(true);
-}
+    this.printableData.set(printablePayload);
+    this.showPrintModal.set(true);
+  }
 
   public async onSaveAndSubmit(): Promise<void> {
     if (this.invoiceForm.invalid) {
@@ -1733,7 +1745,7 @@ public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
       series: formRaw.series || 'DEV',
       documentNumber: Number(formRaw.documentNumber) || 1,
       issueDate: formRaw.issueDate || new Date().toISOString().split('T')[0],
-      invoiceType: formRaw.invoiceType || '9.3', // Safe fallback
+      invoiceType: formRaw.invoiceType || '9.3',
       customerAfm: formRaw.customer?.afm || '',
       customerName: formRaw.customer?.legalName || '',
       totalNet: Number(totalNet.toFixed(2)),
@@ -1753,50 +1765,58 @@ public async sendToMyData(invoice: LocalInvoiceRecord): Promise<void> {
   }
 
   public onMovePurposeChange(event: Event): void {
-  const selectElem = event.target as HTMLSelectElement;
-  const purpose = Number(selectElem.value);
+    const selectElem = event.target as HTMLSelectElement;
+    const purpose = Number(selectElem.value);
 
-  // Checks both 4 and 6 to cover both AADE table definitions of "Επιστροφή"
-  const isReturn = purpose === 4 || purpose === 6;
+    const isReturn = purpose === 4 || purpose === 6;
 
-  if (isReturn) {
-    if (!this.invoiceForm.get('series')?.dirty) {
-      this.invoiceForm.get('series')?.setValue('ΕΠΙΣΤΡ', { emitEvent: false });
-      this.updateNextDocumentNumber();
+    if (isReturn) {
+      if (!this.invoiceForm.get('series')?.dirty) {
+        this.invoiceForm.get('series')?.setValue('ΕΠΙΣΤΡ', { emitEvent: false });
+        this.updateNextDocumentNumber();
+      }
+    } else {
+      if (this.invoiceForm.get('series')?.value === 'ΕΠΙΣΤΡ') {
+        const defaultSeries = this.isPureDispatch ? 'DEV' : 'A';
+        this.invoiceForm.get('series')?.setValue(defaultSeries, { emitEvent: false });
+        this.updateNextDocumentNumber();
+      }
+      this.invoiceForm.get('movement.correlatedMark')?.setValue('', { emitEvent: false });
     }
-  } else {
-    if (this.invoiceForm.get('series')?.value === 'ΕΠΙΣΤΡ') {
-      const defaultSeries = this.isPureDispatch ? 'DEV' : 'A';
-      this.invoiceForm.get('series')?.setValue(defaultSeries, { emitEvent: false });
-      this.updateNextDocumentNumber();
-    }
-    this.invoiceForm.get('movement.correlatedMark')?.setValue('', { emitEvent: false });
   }
-}
 
   private updateCustomerValidation(type: string | null | undefined): void {
-  const afmCtrl = this.invoiceForm.get('customer.afm');
-  const nameCtrl = this.invoiceForm.get('customer.legalName');
+    const afmCtrl = this.invoiceForm.get('customer.afm');
+    const nameCtrl = this.invoiceForm.get('customer.legalName');
 
-  const isRetail = type === '11.1' || type === '11.2';
-  const isPureMovement = type === '9.1' || type === '9.3';
+    const isRetail = type === '11.1' || type === '11.2';
+    const isPureMovement = type === '9.1' || type === '9.2' || type === '9.3';
 
-  if (isRetail) {
-    // B2C: AFM and customer name are optional
-    afmCtrl?.clearValidators();
-    nameCtrl?.clearValidators();
-  } else if (isPureMovement) {
-    // 9.3: Counterpart is optional for internal transfers/processing
-    afmCtrl?.clearValidators();
-    nameCtrl?.clearValidators();
-  } else {
-    // B2B Invoices (1.1, 1.2, 2.1): Require strict Greek AFM & business name
-    afmCtrl?.setValidators([Validators.required, greekAfmValidator()]);
-    nameCtrl?.setValidators([Validators.required]);
+    if (isRetail) {
+      afmCtrl?.clearValidators();
+      nameCtrl?.clearValidators();
+    } else if (isPureMovement) {
+      afmCtrl?.clearValidators();
+      nameCtrl?.clearValidators();
+    } else {
+      afmCtrl?.setValidators([Validators.required, greekAfmValidator()]);
+      nameCtrl?.setValidators([Validators.required]);
+    }
+
+    afmCtrl?.updateValueAndValidity({ emitEvent: false });
+    nameCtrl?.updateValueAndValidity({ emitEvent: false });
   }
 
-  afmCtrl?.updateValueAndValidity({ emitEvent: false });
-  nameCtrl?.updateValueAndValidity({ emitEvent: false });
-}
+   private readonly selectedTypeCode = toSignal(
+    this.invoiceForm.get('invoiceType')!.valueChanges,
+    { initialValue: this.invoiceForm.get('invoiceType')?.value || '1.1' }
+  );
 
+  public readonly currentTypeGuide = computed<InvoiceTypeGuide>(() => {
+    const code = this.selectedTypeCode() || '1.1';
+    return INVOICE_TYPE_GUIDES[code] || INVOICE_TYPE_GUIDES['1.1'];
+  });
+  public toggleTypeInfo(): void {
+    this.showTypeInfo.update(v => !v);
+  }
 }

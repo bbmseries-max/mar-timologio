@@ -4,7 +4,7 @@ import { LocalDbService } from './local-db.service';
 import { AuthTenantService } from './auth-tenant.service';
 import { isValidGreekAfm } from '../utils/fiscal-engine';
 import { ExternalDocumentHandover, HandoverAck } from '../models/handover.model';
-import { SubscriptionStatus, TenantSubscription, TenantFeatureFlags } from '../models/tenant.models';
+import { SubscriptionStatus } from '../models/tenant.models';
 
 @Injectable({ providedIn: 'root' })
 export class TenantIntegrationService implements OnDestroy {
@@ -24,8 +24,11 @@ export class TenantIntegrationService implements OnDestroy {
   private readonly allowedOrigins = [
     'http://localhost:4200',
     'http://127.0.0.1:4200',
+    'http://localhost:4201',
+    'http://127.0.0.1:4201',
     'http://localhost:3000',
     'https://maranth.vercel.app',
+    'https://maranth-timologio.vercel.app',
     'https://maranth.gr',
     'https://www.maranth.gr',
   ];
@@ -160,34 +163,32 @@ export class TenantIntegrationService implements OnDestroy {
       return { success: false, error: 'Κενό αντικείμενο δεδομένων handover.' };
     }
 
-    // 1. Subscription & Feature Flag Enforcement
-    // 1. Subscription Enforcement based on your exact interface
-const tenant = this.auth.activeTenant();
-if (tenant) {
-  const sub = tenant.subscription;
-  if (sub) {
-    const status: SubscriptionStatus = sub.status;
+    // 1. Subscription Enforcement
+    const tenant = this.auth.activeTenant();
+    if (tenant) {
+      const sub = tenant.subscription;
+      if (sub) {
+        const status: SubscriptionStatus = sub.status;
 
-    if (status === 'READ_ONLY' || status === 'SUSPENDED') {
-      return {
-        success: false,
-        error: `Η συνδρομή του καταστήματος (${tenant.name}) είναι σε κατάσταση ${status}. Η έκδοση παραστατικών έχει ανασταλεί.`,
-      };
+        if (status === 'READ_ONLY' || status === 'SUSPENDED') {
+          return {
+            success: false,
+            error: `Η συνδρομή του καταστήματος (${tenant.name}) είναι σε κατάσταση ${status}. Η έκδοση παραστατικών έχει ανασταλεί.`,
+          };
+        }
+
+        if (sub.validUntil && new Date(sub.validUntil) < new Date() && status !== 'GRACE_PERIOD') {
+          return {
+            success: false,
+            error: `Η συνδρομή σας (${sub.planName}) έχει λήξει στις ${sub.validUntil}. Απαιτείται ανανέωση.`,
+          };
+        }
+      }
     }
 
-    // Check if subscription has expired
-    if (sub.validUntil && new Date(sub.validUntil) < new Date() && status !== 'GRACE_PERIOD') {
-      return {
-        success: false,
-        error: `Η συνδρομή σας (${sub.planName}) έχει λήξει στις ${sub.validUntil}. Απαιτείται ανανέωση.`,
-      };
-    }
-  }
-}
+    const docType = String(payload.documentType || payload.invoiceType || '9.3').trim();
 
-    const docType = payload.documentType || payload.invoiceType || '1.1';
-
-    // 2. Validate Counterpart AFM
+    // 2. Validate Counterpart AFM (Permits 000000000 for 9.2 or Retail)
     const party = payload.supplier || payload.customer;
     let cleanAfm = party?.afm ? String(party.afm).replace(/\D/g, '') : '';
 
@@ -196,7 +197,8 @@ if (tenant) {
       if (party) party.afm = cleanAfm;
     }
 
-    if (cleanAfm && !isValidGreekAfm(cleanAfm)) {
+    const allowZero = docType === '9.2' || docType === '11.1' || docType === '11.2';
+    if (cleanAfm && !isValidGreekAfm(cleanAfm, allowZero)) {
       return { success: false, error: `Μη έγκυρο Α.Φ.Μ. αντισυμβαλλομένου: ${cleanAfm}` };
     }
 
@@ -207,7 +209,7 @@ if (tenant) {
     const tenantId = payload.tenantId || this.auth.currentTenantId();
 
     // 3. Enrich customer profile from Dexie cache if available
-    if (cleanAfm) {
+    if (cleanAfm && cleanAfm !== '000000000') {
       const cachedCustomer = await this.db.getCustomerByAfm(tenantId, cleanAfm);
       if (cachedCustomer && party) {
         party.legalName = party.legalName || cachedCustomer.legalName;
@@ -234,6 +236,14 @@ if (tenant) {
     };
   }
 
+  public setPendingHandover(data: ExternalDocumentHandover | null): void {
+    this.pendingHandover.set(data);
+  }
+
+  public clearPending(): void {
+    this.pendingHandover.set(null);
+  }
+
   private sendAck(channel: BroadcastChannel | null, ack: HandoverAck): void {
     if (channel) {
       channel.postMessage({
@@ -249,10 +259,6 @@ if (tenant) {
     }
   }
 
-  public clearPending(): void {
-    this.pendingHandover.set(null);
-  }
-
   ngOnDestroy(): void {
     this.tenantChannel?.close();
     this.genericChannel?.close();
@@ -260,4 +266,4 @@ if (tenant) {
       window.removeEventListener('message', this.messageHandler);
     }
   }
-}
+} 

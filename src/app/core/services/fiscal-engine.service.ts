@@ -2,14 +2,19 @@ import { VatRateCategory, InvoiceLineItem, InvoiceTotals } from '../models/aade.
 
 /**
  * Validates a Greek VAT Number (Α.Φ.Μ.) using the official Modulo-11 algorithm.
- * Rejects non-9-digit strings, non-numeric values, and all-zero strings.
+ * Rejects non-9-digit strings, non-numeric values, and all-zero strings (unless allowZeroVat is true for 9.2 / Retail).
  */
-export function isValidGreekAfm(afm: string | null | undefined): boolean {
+export function isValidGreekAfm(afm: string | null | undefined, allowZeroVat: boolean = false): boolean {
   if (!afm) return false;
   const clean = afm.replace(/\D/g, '').trim();
 
-  if (clean.length !== 9 || clean === '000000000') {
+  if (clean.length !== 9) {
     return false;
+  }
+
+  // Type 9.2 and anonymous retail allow 000000000
+  if (clean === '000000000') {
+    return allowZeroVat;
   }
 
   const digits = clean.split('').map(Number);
@@ -35,7 +40,7 @@ export function getVatPercentage(category: VatRateCategory | number): number {
     case 2:
       return 13; // Reduced (Food, hospitality)
     case 3:
-      return 6;  // Super-reduced (Medicines, theater)
+      return 6;  // Super-reduced (Medicines, books)
     case 4:
       return 17; // Island standard
     case 5:
@@ -44,7 +49,7 @@ export function getVatPercentage(category: VatRateCategory | number): number {
       return 4;  // Island super-reduced
     case 7:
     case 8:
-      return 0;  // Exempt / Zero rate
+      return 0;  // Exempt / Pure Dispatch Zero rate
     default:
       return 24;
   }
@@ -63,7 +68,16 @@ export function calculateLineValues(
   const safePrice = Math.max(0, Number(unitPrice) || 0);
   const safeDisc = Math.min(100, Math.max(0, Number(discountPercentage) || 0));
 
-  // Base raw net
+  // Pure movement note (VatCategory 8) is strictly zero monetary value
+  if (Number(vatRateCategory) === 8) {
+    return {
+      netValue: 0,
+      vatAmount: 0,
+      totalValue: 0,
+      vatPercentage: 0,
+    };
+  }
+
   const grossSubtotal = safeQty * safePrice;
   const discountAmount = roundToTwoDecimals(grossSubtotal * (safeDisc / 100));
   const netValue = roundToTwoDecimals(grossSubtotal - discountAmount);
@@ -82,7 +96,7 @@ export function calculateLineValues(
 
 /**
  * Aggregates all line items into the official InvoiceTotals summary structure,
- * including per-category VAT breakdowns.
+ * ensuring strict consistency between breakdown sums and final totals.
  */
 export function calculateInvoiceTotals(lines: InvoiceLineItem[]): InvoiceTotals {
   if (!lines || lines.length === 0) {
@@ -94,28 +108,22 @@ export function calculateInvoiceTotals(lines: InvoiceLineItem[]): InvoiceTotals 
     };
   }
 
-  let totalNet = 0;
-  let totalVat = 0;
-
-  // Map to accumulate totals per VAT category
+  // Accumulate totals per VAT category
   const breakdownMap = new Map<
     VatRateCategory,
     { ratePercentage: number; netAmount: number; vatAmount: number }
   >();
 
   for (const line of lines) {
-    const net = Number(line.netValue) || 0;
-    const vat = Number(line.vatAmount) || 0;
+    const net = roundToTwoDecimals(Number(line.netValue) || 0);
+    const vat = roundToTwoDecimals(Number(line.vatAmount) || 0);
     const cat = (Number(line.vatRateCategory) || 1) as VatRateCategory;
     const pct = line.vatPercentage ?? getVatPercentage(cat);
 
-    totalNet += net;
-    totalVat += vat;
-
     const existing = breakdownMap.get(cat);
     if (existing) {
-      existing.netAmount += net;
-      existing.vatAmount += vat;
+      existing.netAmount = roundToTwoDecimals(existing.netAmount + net);
+      existing.vatAmount = roundToTwoDecimals(existing.vatAmount + vat);
     } else {
       breakdownMap.set(cat, {
         ratePercentage: pct,
@@ -125,7 +133,7 @@ export function calculateInvoiceTotals(lines: InvoiceLineItem[]): InvoiceTotals 
     }
   }
 
-  // Format breakdowns with 2 decimal precision
+  // Convert breakdown map to array
   const vatBreakdowns = Array.from(breakdownMap.entries()).map(([cat, data]) => ({
     rateCategory: cat,
     ratePercentage: data.ratePercentage,
@@ -133,8 +141,13 @@ export function calculateInvoiceTotals(lines: InvoiceLineItem[]): InvoiceTotals 
     vatAmount: roundToTwoDecimals(data.vatAmount),
   }));
 
-  const roundedNet = roundToTwoDecimals(totalNet);
-  const roundedVat = roundToTwoDecimals(totalVat);
+  // Reconcile overall totals strictly from rounded breakdowns to prevent AADE 201/203 mismatches
+  const roundedNet = roundToTwoDecimals(
+    vatBreakdowns.reduce((sum, b) => sum + b.netAmount, 0)
+  );
+  const roundedVat = roundToTwoDecimals(
+    vatBreakdowns.reduce((sum, b) => sum + b.vatAmount, 0)
+  );
   const roundedGross = roundToTwoDecimals(roundedNet + roundedVat);
 
   return {
@@ -150,5 +163,5 @@ export function calculateInvoiceTotals(lines: InvoiceLineItem[]): InvoiceTotals 
  * Avoids IEEE 754 precision bugs (e.g. 1.005 rounding to 1.00).
  */
 export function roundToTwoDecimals(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }

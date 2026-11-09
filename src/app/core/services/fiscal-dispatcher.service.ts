@@ -29,8 +29,19 @@ export class FiscalDispatcherService {
    * Public dispatch method called by InvoiceBuilderComponent
    */
   public async transmit(invoice: LocalInvoiceRecord): Promise<FiscalDispatchResult> {
-    const tenantId = invoice.tenantId || this.auth.currentTenantId() || 'default-tenant';
-    const settings = await this.db.getSettings(tenantId) as TenantSettingsRecord | null;
+    const tenantId = invoice.tenantId || this.auth.currentTenantId() || 'tenant_minimarket';
+    
+    let settings: TenantSettingsRecord | null = null;
+    try {
+      settings = (await this.db.getSettings(tenantId)) as TenantSettingsRecord | null;
+      if (!settings) {
+        // Fallback to primary record if tenantId lookup didn't match
+        const all = await (this.db as any).settings?.toArray?.();
+        if (all && all.length > 0) settings = all[0];
+      }
+    } catch (e) {
+      console.warn('[FiscalDispatcher] Settings lookup warning:', e);
+    }
 
     const mode = settings?.fiscalMode || 'DIRECT_AADE';
 
@@ -39,16 +50,31 @@ export class FiscalDispatcherService {
     }
 
     // Default: Direct AADE ERP via your existing MyDataService
-    const res = await this.myData.transmitInvoice(invoice);
-    return {
-      success: res.success,
-      mark: res.mark,
-      uid: res.uid,
-      qrUrl: res.qrUrl,
-      error: res.error,
-      // Cast with `(res as any).rawResponse` or omit if unneeded:
-      rawResponse: (res as any).rawResponse ?? null
-    };
+    try {
+      const res = await this.myData.transmitInvoice(invoice);
+      const rawRes = (res as any) || {};
+
+      const resolvedUid = res.uid || rawRes.invoiceUid || rawRes.uid || '';
+      const resolvedMark = res.mark ? String(res.mark).trim() : (rawRes.invoiceMark ? String(rawRes.invoiceMark).trim() : undefined);
+      const resolvedQr = res.qrUrl || rawRes.qrUrl || (resolvedMark ? `https://mydataapidev.aade.gr/TimologioQR/QRInfo?q=${resolvedMark}` : '');
+
+      return {
+        success: Boolean(res.success && resolvedMark),
+        mark: resolvedMark,
+        uid: resolvedUid,
+        qrUrl: resolvedQr,
+        providerSignature: (res as any)?.providerSignature ?? rawRes.providerSignature,
+        error: res.error || rawRes.message,
+        rawResponse: rawRes.rawResponse ?? rawRes.raw ?? res,
+      };
+    } catch (err: any) {
+      console.error('[FiscalDispatcher] Direct transmission unexpected error:', err);
+      return {
+        success: false,
+        error: err?.message || 'Σφάλμα σύνδεσης κατά τη διαβίβαση στην ΑΑΔΕ',
+        rawResponse: err,
+      };
+    }
   }
 
   private async transmitViaProvider(
@@ -62,8 +88,8 @@ export class FiscalDispatcherService {
           providerName: settings?.providerName || 'IMPACT',
           apiKey: settings?.providerApiKey || '',
           clientId: settings?.providerClientId || '',
-          environment: settings?.fiscalEnvironment || 'dev'
-        }
+          environment: settings?.fiscalEnvironment || 'dev',
+        },
       };
 
       const response = await firstValueFrom(
@@ -74,7 +100,7 @@ export class FiscalDispatcherService {
     } catch (err: any) {
       return {
         success: false,
-        error: err.error?.error || err.message || 'Αποτυχία διαβίβασης μέσω Παρόχου'
+        error: err.error?.error || err.message || 'Αποτυχία διαβίβασης μέσω Παρόχου',
       };
     }
   }

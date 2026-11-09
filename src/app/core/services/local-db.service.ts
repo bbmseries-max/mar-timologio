@@ -1,12 +1,11 @@
 import { Injectable } from '@angular/core';
 import Dexie, { Table } from 'dexie';
 import {
-  LocalInvoiceRecord, 
-  CompanySettingsRecord,
+  LocalInvoiceRecord,
   Product,
+  TenantSettingsRecord,
 } from '../models/database.models';
 import { Customer } from '../models/aade.models';
-import { TenantSettingsRecord } from '../models/database.models';
 
 export interface LocalCustomerRecord extends Customer {
   id: string;
@@ -25,33 +24,41 @@ export class LocalDbService extends Dexie {
   constructor() {
     super('MaranthHubMultiTenantDb');
 
+    // Retain historical upgrade paths
     this.version(1).stores({
       settings: 'tenantId, afm, fiscalEnvironment',
       invoices: 'id, tenantId, mark, transmissionStatus, issueDate',
-      products: 'id, tenantId, name, barcode'
+      products: 'id, tenantId, name, barcode',
     });
-  
 
-    // Make sure each table key appears EXACTLY ONCE
     this.version(2).stores({
       invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, updatedAt, createdAt',
       products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
-      settings: 'id', 
+      settings: 'id',
       customers: 'id, tenantId, afm, legalName, phone, updatedAt',
     });
 
     this.version(3).stores({
-  invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, updatedAt, createdAt',
-  products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
-  settings: 'tenantId', // <-- Dexie now knows the primary key is 'tenantId'!
-  customers: 'id, tenantId, afm, legalName, phone, updatedAt',
+      invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, updatedAt, createdAt',
+      products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
+      settings: 'id, tenantId',
+      customers: 'id, tenantId, afm, legalName, phone, updatedAt',
     });
+
     this.version(4).stores({
-  invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, mark, uid, updatedAt, createdAt',
-  products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
-  settings: 'tenantId',
-  customers: 'id, tenantId, afm, legalName, phone, updatedAt',
-});
+      invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, mark, uid, updatedAt, createdAt',
+      products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
+      settings: 'id, tenantId',
+      customers: 'id, tenantId, afm, legalName, phone, updatedAt',
+    });
+
+    // Match the existing browser storage schema (v40)
+    this.version(40).stores({
+      invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, mark, uid, updatedAt, createdAt',
+      products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
+      settings: 'id, tenantId',
+      customers: 'id, tenantId, afm, legalName, phone, updatedAt',
+    });
   }
 
   public async getAllInvoices(tenantId?: string): Promise<LocalInvoiceRecord[]> {
@@ -66,65 +73,67 @@ export class LocalDbService extends Dexie {
   }
 
   /**
-   * Retrieves the highest documentNumber used for a given series and tenant,
-   * returning highest + 1. Defaults to 1 if no invoices exist for this series.
+   * Retrieves highest documentNumber used for given series and tenant, returning highest + 1.
    */
   public async getNextDocumentNumber(tenantId: string, series: string): Promise<number> {
-  const normalizedSeries = (series || '').trim().toUpperCase();
+    const normalizedSeries = (series || '').trim().toUpperCase();
 
-  // 1. Fetch only invoices that have actually been transmitted or finalized
-  const officialInvoices = await this.invoices
-    .where('tenantId')
-    .equals(tenantId)
-    .filter(inv => {
-      const matchesSeries = (inv.series || '').trim().toUpperCase() === normalizedSeries;
-      // An invoice is official if it has a myDATA MARK or is marked transmitted/cancelled
-      const isOfficial = !!inv.mark || 
-        inv.transmissionStatus === 'TRANSMITTED' || 
-        inv.transmissionStatus === 'CANCELLED';
-      
-      return matchesSeries && isOfficial;
-    })
-    .toArray();
+    const officialInvoices = await this.invoices
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((inv) => {
+        const matchesSeries = (inv.series || '').trim().toUpperCase() === normalizedSeries;
+        const isOfficial =
+          Boolean(inv.mark) ||
+          inv.transmissionStatus === 'TRANSMITTED' ||
+          inv.transmissionStatus === 'CANCELLED';
 
-  if (!officialInvoices.length) {
-    return 1;
+        return matchesSeries && isOfficial;
+      })
+      .toArray();
+
+    if (!officialInvoices.length) {
+      return 1;
+    }
+
+    const maxNumber = Math.max(...officialInvoices.map((inv) => Number(inv.documentNumber) || 0));
+    return maxNumber + 1;
   }
 
-  // 2. Find the highest documentNumber among official records
-  const maxNumber = Math.max(...officialInvoices.map(inv => Number(inv.documentNumber) || 0));
-  
-  return maxNumber + 1;
-}
-
   public async updateInvoice(id: string, changes: Partial<LocalInvoiceRecord>): Promise<number> {
-  return await this.invoices.update(id, changes);
-}
+    return await this.invoices.update(id, changes);
+  }
 
   // --- Products Catalog ---
 
-  /**
-   * Bulk inserts or updates products from CSV / Excel importers.
-   */
   public async bulkSaveProducts(products: Product[]): Promise<void> {
     await this.products.bulkPut(products);
   }
 
-
-
   // --- Settings & AADE Credentials ---
 
   public async getSettingsForTenant(tenantId: string): Promise<TenantSettingsRecord | undefined> {
-    return this.settings.get(tenantId);
+    return this.getSettings(tenantId);
   }
 
   public async getSettings(tenantId: string): Promise<TenantSettingsRecord | undefined> {
-    return this.settings.get(tenantId);
+    // 1. Try by primary key 'id'
+    let s = await this.settings.get(tenantId);
+    // 2. Try by indexed 'tenantId'
+    if (!s) {
+      s = await this.settings.where('tenantId').equals(tenantId).first();
+    }
+    // 3. Fallback to first available record
+    if (!s) {
+      const all = await this.settings.toArray();
+      if (all.length > 0) s = all[0];
+    }
+    return s;
   }
 
   public async getInvoiceById(id: string): Promise<LocalInvoiceRecord | undefined> {
-  return await this.invoices.get(id);
-}
+    return await this.invoices.get(id);
+  }
 
   public async saveSettings(record: TenantSettingsRecord): Promise<string> {
     return this.settings.put(record);
@@ -152,7 +161,6 @@ export class LocalDbService extends Dexie {
       .limit(8)
       .toArray();
   }
-  
 
   public async getCustomerByAfm(tenantId: string, afm: string): Promise<LocalCustomerRecord | undefined> {
     return this.customers
@@ -163,40 +171,44 @@ export class LocalDbService extends Dexie {
   }
 
   public async saveSettingsForTenant(
-  tenantId: string,
-  settings: Partial<TenantSettingsRecord>
-): Promise<string> {
-  const existing = await this.getSettingsForTenant(tenantId);
+    tenantId: string,
+    settings: Partial<TenantSettingsRecord>
+  ): Promise<string> {
+    const existing = await this.getSettingsForTenant(tenantId);
 
-  // Compute canonical fiscalEnvironment with explicit precedence
-  const resolvedFiscalEnv = settings.fiscalEnvironment 
-    ?? (settings.isProduction !== undefined ? (settings.isProduction ? 'production' : 'dev') : undefined)
-    ?? existing?.fiscalEnvironment 
-    ?? 'dev';
+    const resolvedFiscalEnv =
+      settings.fiscalEnvironment ??
+      (settings.isProduction !== undefined
+        ? settings.isProduction
+          ? 'production'
+          : 'dev'
+        : undefined) ??
+      existing?.fiscalEnvironment ??
+      'dev';
 
-  const updatedRecord: TenantSettingsRecord = {
-    afm: '',
-    doy: '',
-    legalName: '',
-    street: '',
-    number: '',
-    postalCode: '',
-    city: '',
-    branch: 0,
-    defaultSeries: 'A',
-    ...( existing || {}),
-    ...( settings || {}),
-   tenantId,
-  id: tenantId,
-  fiscalEnvironment: resolvedFiscalEnv,
-  isProduction: resolvedFiscalEnv === 'production',
-  fiscalMode: (settings?.fiscalMode ?? settings?.fiscalMode ?? existing?.fiscalMode ?? existing?.fiscalMode) || 'DIRECT_AADE',
-  updatedAt: new Date().toISOString()
-};
+    const updatedRecord: TenantSettingsRecord = {
+      afm: '',
+      doy: '',
+      legalName: '',
+      street: '',
+      number: '',
+      postalCode: '',
+      city: '',
+      branch: 0,
+      defaultSeries: 'A',
+      ...(existing || {}),
+      ...(settings || {}),
+      tenantId,
+      id: tenantId,
+      fiscalEnvironment: resolvedFiscalEnv,
+      isProduction: resolvedFiscalEnv === 'production',
+      fiscalMode: settings?.fiscalMode ?? existing?.fiscalMode ?? 'DIRECT_AADE',
+      updatedAt: new Date().toISOString(),
+    };
 
-  await this.settings.put(updatedRecord);
-  return tenantId;
-}
+    await this.settings.put(updatedRecord);
+    return tenantId;
+  }
 
   public async saveCustomer(record: LocalCustomerRecord): Promise<string> {
     await this.customers.put(record);
@@ -246,24 +258,18 @@ export class LocalDbService extends Dexie {
       .toArray();
   }
 
-  /**
- * Updates an invoice record in Dexie with its AADE cancellation mark
- */
-public async markInvoiceAsCancelled(
-  invoiceId: string,
-  cancellationMark: string
-): Promise<void> {
-  await this.invoices.update(invoiceId, {
-    transmissionStatus: 'CANCELLED',
-    cancellationMark,
-    cancelledAt: new Date().toISOString(),
-    updatedAt: Date.now()
-  });
-}
+  public async markInvoiceAsCancelled(
+    invoiceId: string,
+    cancellationMark: string
+  ): Promise<void> {
+    await this.invoices.update(invoiceId, {
+      transmissionStatus: 'CANCELLED',
+      cancellationMark,
+      cancelledAt: new Date().toISOString(),
+      updatedAt: Date.now(),
+    });
+  }
 
-/**
-   * Finalizes an invoice or 9.3 delivery note after successful AADE submission
-   */
   public async markInvoiceAsTransmitted(
     id: string,
     aadeData: { mark: string; uid: string; qrUrl?: string }
@@ -274,59 +280,52 @@ public async markInvoiceAsCancelled(
       qrUrl: aadeData.qrUrl,
       transmissionStatus: 'TRANSMITTED',
       transmittedAt: new Date().toISOString(),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
     } as Partial<LocalInvoiceRecord>);
   }
 
-  /**
- * Safely removes untransmitted records (DRAFT or FAILED) without an AADE MARK.
- * Never touches records with transmissionStatus === 'TRANSMITTED' or valid mark.
- */
-public async purgeDraftAndFailedInvoices(
-  tenantId: string, 
-  options?: { olderThanDays?: number; seriesFilter?: string[] }
-): Promise<number> {
-  if (!tenantId) return 0;
+  public async purgeDraftAndFailedInvoices(
+    tenantId: string,
+    options?: { olderThanDays?: number; seriesFilter?: string[] }
+  ): Promise<number> {
+    if (!tenantId) return 0;
 
-  // Query only invoices belonging to this tenant
-  const collection = this.invoices
-    .where('tenantId')
-    .equals(tenantId)
-    .filter((inv: LocalInvoiceRecord) => {
-      // 1. Absolute safety guard: never delete anything with a valid AADE MARK
-      if (inv.mark && String(inv.mark).trim().length > 0) {
-        return false;
-      }
+    const collection = this.invoices
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((inv: LocalInvoiceRecord) => {
+        if (inv.mark && String(inv.mark).trim().length > 0) {
+          return false;
+        }
 
-      // 2. Target only untransmitted statuses
-      const isCandidate = inv.transmissionStatus === 'DRAFT' || inv.transmissionStatus === 'FAILED';
-      if (!isCandidate) return false;
+        const isCandidate =
+          inv.transmissionStatus === 'DRAFT' || inv.transmissionStatus === 'FAILED';
+        if (!isCandidate) return false;
 
-      // 3. Optional series filter (e.g. only test series like ['dev', 'tes', 'A'])
-      if (options?.seriesFilter && options.seriesFilter.length > 0) {
-        const normalizedSeries = (inv.series || '').trim().toUpperCase();
-        const matchesSeries = options.seriesFilter
-          .map(s => s.trim().toUpperCase())
-          .includes(normalizedSeries);
-        if (!matchesSeries) return false;
-      }
+        if (options?.seriesFilter && options.seriesFilter.length > 0) {
+          const normalizedSeries = (inv.series || '').trim().toUpperCase();
+          const matchesSeries = options.seriesFilter
+            .map((s) => s.trim().toUpperCase())
+            .includes(normalizedSeries);
+          if (!matchesSeries) return false;
+        }
 
-      // 4. Optional age threshold (in days)
-      if (options?.olderThanDays && options.olderThanDays > 0) {
-        const cutoffTime = Date.now() - options.olderThanDays * 24 * 60 * 60 * 1000;
-        const recordTime = typeof inv.createdAt === 'number' 
-          ? inv.createdAt 
-          : new Date(inv.createdAt || inv.issueDate).getTime();
-        return recordTime < cutoffTime;
-      }
+        if (options?.olderThanDays && options.olderThanDays > 0) {
+          const cutoffTime = Date.now() - options.olderThanDays * 24 * 60 * 60 * 1000;
+          const recordTime =
+            typeof inv.createdAt === 'number'
+              ? inv.createdAt
+              : new Date(inv.createdAt || inv.issueDate).getTime();
+          return recordTime < cutoffTime;
+        }
 
-      return true;
-    });
+        return true;
+      });
 
-  const idsToDelete = await collection.primaryKeys();
-  if (idsToDelete.length === 0) return 0;
+    const idsToDelete = await collection.primaryKeys();
+    if (idsToDelete.length === 0) return 0;
 
-  await this.invoices.bulkDelete(idsToDelete);
-  return idsToDelete.length;
-}
+    await this.invoices.bulkDelete(idsToDelete);
+    return idsToDelete.length;
+  }
 }

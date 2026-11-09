@@ -1,9 +1,8 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { LocalDbService } from './local-db.service';
 import { AuthTenantService } from './auth-tenant.service';
-import { TenantSettingsRecord } from '@core/models/database.models';
 import { AadeSerializerService } from './aade-serializer.service';
 
 export interface MyDataResponse {
@@ -11,6 +10,7 @@ export interface MyDataResponse {
   mark?: string;
   uid?: string;
   qrUrl?: string;
+  providerSignature?: string; // 👈 Resolved compilation gap
   error?: string;
   raw?: string;
 }
@@ -32,14 +32,16 @@ export class MyDataService {
   private readonly aadeSerializer = inject(AadeSerializerService);
 
   public readonly currentEnvironment = signal<FiscalEnvironment>('dev');
+
   public async setEnvironment(env: FiscalEnvironment): Promise<void> {
     this.currentEnvironment.set(env);
-    
+
     const tenantId = this.auth.currentTenantId();
     if (!tenantId) return;
 
-    await (this.db as any).saveSettingsForTenant(tenantId, {
-      fiscalEnvironment: env
+    await this.db.saveSettingsForTenant(tenantId, {
+      fiscalEnvironment: env,
+      isProduction: env === 'production',
     });
   }
 
@@ -47,10 +49,7 @@ export class MyDataService {
     const tenantId = this.auth.currentTenantId();
     if (!tenantId) return;
 
-    const settings = typeof (this.db as any).getSettingsForTenant === 'function'
-      ? await (this.db as any).getSettingsForTenant(tenantId)
-      : await (this.db as any).getSettings(tenantId);
-
+    const settings = await this.db.getSettings(tenantId);
     const env: FiscalEnvironment = settings?.fiscalEnvironment === 'production' ? 'production' : 'dev';
     this.currentEnvironment.set(env);
   }
@@ -58,38 +57,43 @@ export class MyDataService {
   private readonly workerUrl = 'https://gsis-lookup.bbmseries.workers.dev/send-invoice';
 
   /**
-   * Transmits any invoice or transport document (1.1, 9.3, etc.) to AADE myDATA.
+   * Transmits any invoice or transport document (1.1, 9.2, 9.3, etc.) to AADE myDATA.
    */
   public async transmitInvoice(invoice: any): Promise<MyDataResponse> {
-    const tenantId = this.auth.currentTenantId();
-    if (!tenantId) {
-      throw new Error('Αδυναμία αποστολής: Δεν υπάρχει ενεργός συνδεδεμένος χρήστης/tenant.');
-    }
+    const tenantId = invoice?.tenantId || this.auth.currentTenantId() || 'tenant_minimarket';
 
     // 1. Fetch tenant-specific settings strictly by tenantId
-    const settings = typeof (this.db as any).getSettingsForTenant === 'function'
-      ? await (this.db as any).getSettingsForTenant(tenantId)
-      : await (this.db as any).getSettings(tenantId);
+    const settings = await this.db.getSettings(tenantId);
 
-    const issuerAfm = settings?.afm ? String(settings.afm).replace(/\D/g, '').trim() : '';
-    const userId = (settings?.aadeUserId || '').trim();
-    const subKey = (settings?.aadeSubscriptionKey || '').trim();
-    const fiscalEnv = settings?.fiscalEnvironment === 'production' ? 'production' : 'sandbox';
+    const isProd = settings?.isProduction === true || settings?.fiscalEnvironment === 'production';
+    const fiscalEnv: FiscalEnvironment = isProd ? 'production' : 'dev';
+
+    let issuerAfm = settings?.afm ? String(settings.afm).replace(/\D/g, '').trim() : '';
+    let userId = (settings?.aadeUserId || '').trim();
+    let subKey = (settings?.aadeSubscriptionKey || '').trim();
+
+    // Dev fallbacks for local integration testing
+    if (!isProd) {
+      issuerAfm = issuerAfm || '067424104';
+      userId = userId || 'cuko93dev';
+      subKey = subKey || 'eaba5813069d0833f4ccb06dc219ee46';
+    }
 
     if (!issuerAfm) {
-      throw new Error(`Δεν έχει ρυθμιστεί Α.Φ.Μ. εκδότη για το tenant: ${tenantId}. Ελέγξτε το προφίλ της επιχείρησης.`);
+      throw new Error(`Δεν έχει ρυθμιστεί Α.Φ.Μ. εκδότη για το tenant: ${tenantId}. Ελέγξτε τις Ρυθμίσεις.`);
     }
 
     if (!userId || !subKey) {
       throw new Error(`Λείπουν τα διαπιστευτήρια myDATA (User ID ή Subscription Key) για το tenant: ${tenantId}.`);
     }
 
-    // 2. Delegate XML generation exclusively to AadeSerializerService
+    // 2. Delegate XML generation to serializer
     const xmlPayload = this.aadeSerializer.serializeToXml(invoice, issuerAfm, settings);
 
     console.log(`📤 [myDATA] Transmitting to worker | Env: ${fiscalEnv} | Tenant: ${tenantId} | Issuer: ${issuerAfm}`);
     console.log('📄 [myDATA] RAW XML PAYLOAD:\n', xmlPayload);
 
+    // Support dual payload envelope (JSON wrapped with headers for Cloudflare proxy)
     const envelope = {
       userId,
       subscriptionKey: subKey,
@@ -97,26 +101,33 @@ export class MyDataService {
       xml: xmlPayload,
     };
 
+    const headers = new HttpHeaders({
+      'Content-Type': 'application/json',
+      'x-tenant-id': tenantId,
+      'x-fiscal-env': fiscalEnv,
+      'aade-user-id': userId,
+      'ocp-apim-subscription-key': subKey,
+    });
+
     try {
       const res = await firstValueFrom(
-        this.http.post<MyDataResponse>(this.workerUrl, envelope, {
-          headers: { 'Content-Type': 'application/json' }
-        })
+        this.http.post<any>(this.workerUrl, envelope, { headers })
       );
 
       console.log('📡 [myDATA] Worker Raw Response:', res);
 
-      let parsedMark = res.mark;
-      let parsedUid = res.uid;
+      let parsedMark = res.mark ? String(res.mark).trim() : undefined;
+      let parsedUid = res.uid || res.invoiceUid;
       let parsedQrUrl = res.qrUrl;
-      let isSuccess = res.success;
+      let isSuccess = Boolean(res.success && parsedMark);
       let errorMessage = res.error;
 
       // 3. Parse XML response doc from AADE
-      if (res.raw) {
+      const rawXml = res.raw || res.rawXmlResponse;
+      if (rawXml) {
         try {
           const parser = new DOMParser();
-          const xmlDoc = parser.parseFromString(res.raw, 'application/xml');
+          const xmlDoc = parser.parseFromString(rawXml, 'application/xml');
           const statusCode = xmlDoc.querySelector('statusCode')?.textContent?.trim();
 
           if (statusCode === 'Success') {
@@ -140,26 +151,30 @@ export class MyDataService {
         }
       }
 
+      if (parsedMark && !parsedQrUrl) {
+        const qrBase = fiscalEnv === 'production'
+          ? 'https://mydatapi.aade.gr/TimologioQR/QRInfo'
+          : 'https://mydataapidev.aade.gr/TimologioQR/QRInfo';
+        parsedQrUrl = `${qrBase}?q=${parsedMark}`;
+      }
+
       const finalResponse: MyDataResponse = {
         success: isSuccess,
         mark: parsedMark,
         uid: parsedUid,
         qrUrl: parsedQrUrl,
+        providerSignature: res.providerSignature,
         error: errorMessage,
-        raw: res.raw,
+        raw: rawXml,
       };
 
-      // 4. Update and persist invoice record in Dexie upon success
-      if (finalResponse.success && finalResponse.mark) {
-        invoice.mark = finalResponse.mark;
-        invoice.uid = finalResponse.uid;
-        invoice.qrUrl = finalResponse.qrUrl;
-        invoice.status = 'transmitted';
-        invoice.transmissionStatus = 'TRANSMITTED';
-        invoice.updatedAt = Date.now();
-        invoice.tenantId = tenantId;
-
-        await (this.db as any).invoices.put(invoice);
+      // 4. Update and persist invoice record in Dexie upon success if valid id exists
+      if (finalResponse.success && finalResponse.mark && invoice?.id) {
+        await this.db.markInvoiceAsTransmitted(invoice.id, {
+          mark: finalResponse.mark,
+          uid: finalResponse.uid || '',
+          qrUrl: finalResponse.qrUrl,
+        });
       }
 
       return finalResponse;
@@ -177,89 +192,83 @@ export class MyDataService {
    * Cancels a previously submitted invoice using its MARK.
    */
   public async cancelInvoice(
-  invoiceOrMark: any,
-  tenantSettings?: any
-): Promise<CancelInvoiceResult> {
-  const mark = typeof invoiceOrMark === 'string' ? invoiceOrMark : invoiceOrMark?.mark;
-  
-  if (!mark) {
-    throw new Error('Δεν βρέθηκε MARK στο επιλεγμένο παραστατικό.');
-  }
+    invoiceOrMark: any,
+    tenantSettings?: any
+  ): Promise<CancelInvoiceResult> {
+    const mark = typeof invoiceOrMark === 'string' ? invoiceOrMark : invoiceOrMark?.mark;
 
-  const tenantId = this.auth.currentTenantId();
-  if (!tenantId && !tenantSettings) {
-    throw new Error('Tenant context missing.');
-  }
-
-  const settings = tenantSettings || (
-    typeof (this.db as any).getSettingsForTenant === 'function'
-      ? await (this.db as any).getSettingsForTenant(tenantId)
-      : await (this.db as any).getSettings(tenantId)
-  );
-
-  const userId = (settings?.aadeUserId || '').trim();
-  const subscriptionKey = (settings?.aadeSubscriptionKey || '').trim();
-  const fiscalEnv = settings?.fiscalEnvironment === 'production' ? 'production' : 'sandbox';
-
-  const baseUrl = fiscalEnv === 'production'
-    ? 'https://mydatapi.aade.gr'
-    : 'https://mydataapidev.aade.gr';
-
-  const targetEndpoint = `${baseUrl}/CancelInvoice?mark=${encodeURIComponent(mark.trim())}`;
-
-  const envelope = {
-    userId,
-    subscriptionKey,
-    environment: fiscalEnv,
-    targetEndpoint,
-    method: 'POST',
-    mark: mark.trim(),
-    xml: ''
-  };
-
-  console.log(`🗑️ [myDATA] Cancelling MARK: ${mark} via endpoint: ${targetEndpoint}`);
-
-  try {
-    const res: any = await firstValueFrom(
-      this.http.post(this.workerUrl, envelope, {
-        headers: { 'Content-Type': 'application/json' }
-      })
-    );
-
-    console.log('📡 [myDATA] Cancel Worker Raw Response:', res);
-
-    const responseXml = res.raw || '';
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(responseXml, 'application/xml');
-
-    const statusCode = doc.querySelector('statusCode')?.textContent?.trim();
-    const cancellationMark = doc.querySelector('cancellationMark')?.textContent?.trim();
-
-    if (statusCode === 'Success' && cancellationMark) {
-      return {
-        success: true,
-        cancellationMark
-      };
+    if (!mark) {
+      throw new Error('Δεν βρέθηκε MARK στο επιλεγμένο παραστατικό.');
     }
 
-    const errorNodes = Array.from(doc.querySelectorAll('errors > error'));
-    const errors = errorNodes.map(e => {
-      const code = e.querySelector('code')?.textContent?.trim() || '';
-      const msg = e.querySelector('message')?.textContent?.trim() || '';
-      return `${code ? `[${code}] ` : ''}${msg}`.trim();
-    });
+    const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
+    const settings = tenantSettings || (await this.db.getSettings(tenantId));
 
-    return {
-      success: false,
-      errors: errors.length ? errors : [res.error || 'Απόρριψη ακύρωσης από την ΑΑΔΕ.'],
-      rawResponse: responseXml
+    const isProd = settings?.isProduction === true || settings?.fiscalEnvironment === 'production';
+    const fiscalEnv: FiscalEnvironment = isProd ? 'production' : 'dev';
+
+    const userId = (settings?.aadeUserId || (isProd ? '' : 'cuko93dev')).trim();
+    const subscriptionKey = (settings?.aadeSubscriptionKey || (isProd ? '' : 'eaba5813069d0833f4ccb06dc219ee46')).trim();
+
+    const baseUrl = isProd
+      ? 'https://mydatapi.aade.gr'
+      : 'https://mydataapidev.aade.gr';
+
+    const targetEndpoint = `${baseUrl}/CancelInvoice?mark=${encodeURIComponent(mark.trim())}`;
+
+    const envelope = {
+      userId,
+      subscriptionKey,
+      environment: fiscalEnv,
+      targetEndpoint,
+      method: 'POST',
+      mark: mark.trim(),
+      xml: '',
     };
-  } catch (err: any) {
-    console.error('CancelInvoice HTTP Error:', err);
-    return {
-      success: false,
-      errors: [err?.error?.error || err?.message || 'Αποτυχία δικτύου κατά την κλήση ακύρωσης.']
-    };
+
+    try {
+      const res: any = await firstValueFrom(
+        this.http.post(this.workerUrl, envelope, {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-tenant-id': tenantId,
+            'x-fiscal-env': fiscalEnv,
+          },
+        })
+      );
+
+      const responseXml = res.raw || '';
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(responseXml, 'application/xml');
+
+      const statusCode = doc.querySelector('statusCode')?.textContent?.trim();
+      const cancellationMark = doc.querySelector('cancellationMark')?.textContent?.trim();
+
+      if (statusCode === 'Success' && cancellationMark) {
+        return {
+          success: true,
+          cancellationMark,
+        };
+      }
+
+      const errorNodes = Array.from(doc.querySelectorAll('errors > error'));
+      const errors = errorNodes.map(e => {
+        const code = e.querySelector('code')?.textContent?.trim() || '';
+        const msg = e.querySelector('message')?.textContent?.trim() || '';
+        return `${code ? `[${code}] ` : ''}${msg}`.trim();
+      });
+
+      return {
+        success: false,
+        errors: errors.length ? errors : [res.error || 'Απόρριψη ακύρωσης από την ΑΑΔΕ.'],
+        rawResponse: responseXml,
+      };
+    } catch (err: any) {
+      console.error('CancelInvoice HTTP Error:', err);
+      return {
+        success: false,
+        errors: [err?.error?.error || err?.message || 'Αποτυχία δικτύου κατά την κλήση ακύρωσης.'],
+      };
+    }
   }
-}
 }

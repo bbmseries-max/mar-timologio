@@ -2,7 +2,7 @@
 
 export interface InvoiceMovementData {
   vehicleNumber?: string;
-  movePurpose?: number; // 1 = Sale, 6 = Movement, etc.
+  movePurpose?: number; // 1 = Sale, 4/6 = Return/Movement, etc.
   dispatchDateTime?: string;
   correlatedMark?: string;
   addressFrom?: { street: string; number?: string; postalCode: string; city: string };
@@ -16,7 +16,7 @@ export interface InvoiceLineItem {
   unitMeasurement?: string | number;
   unitPrice?: number;
   netValue: number;
-  vatCategory?: number;        // 1 = 24%, 2 = 13%, 3 = 6%, etc.
+  vatCategory?: number;        // 1 = 24%, 2 = 13%, 8 = 0% (Movement)
   vatRateCategory?: number;    // fallback compatibility
   vatAmount: number;
   classificationType?: string;      // e.g. 'E3_561_001', 'E3_561_003'
@@ -32,9 +32,10 @@ export interface InvoicePayload {
   series: string;
   aa: string | number;
   issueDate: string; // YYYY-MM-DD
-  invoiceType: string; // '1.1', '2.1', '9.3', '11.1', etc.
+  invoiceType: string; // '1.1', '1.2', '2.1', '9.1', '9.2', '9.3', '11.1', '11.2'
   currency?: string;
   issuerAfm: string;
+  issuerName?: string;
   issuerCountry?: string;
   issuerBranch?: number;
   counterpartAfm?: string;
@@ -55,109 +56,204 @@ export interface InvoicePayload {
   paymentMethodType?: number; // 1 = Cash, 3 = Bank, 5 = POS
 }
 
-export function buildInvoicesDocXml(data: InvoicePayload): string {
-  const isType93 = data.invoiceType === '9.3' || data.invoiceType === '9.1';
-  const isRetailService = data.invoiceType === '11.1' || data.invoiceType === '11.2';
-  const isServiceInvoice = data.invoiceType === '2.1';
+interface AddressShape {
+  street?: string;
+  number?: string;
+  postalCode?: string;
+  city?: string;
+}
 
-  // 1. Counterpart XML (Rules: Omit <name> for Greek AFM; Omit entire block if retail customer has no AFM)
+export function buildInvoicesDocXml(data: InvoicePayload): string {
+  const invType = String(data.invoiceType || '1.1').trim();
+  const is91 = invType === '9.1';
+  const is92 = invType === '9.2';
+  const is93 = invType === '9.3';
+  const isMovementOnly = is91 || is92 || is93;
+  const isRetail = invType === '11.1' || invType === '11.2';
+  const isServiceInvoice = invType === '2.1';
+
+  // ---------------------------------------------------------------------------
+  // 1. Dynamic Issuer Loading Address
+  // ---------------------------------------------------------------------------
+  const fromAddr: AddressShape = (data.movement?.addressFrom as AddressShape) || {};
+const loadStreet = escapeXml((fromAddr.street || 'ΒΑΡΔΟΥΝΙΩΤΗ').trim());
+const rawLoadNum = fromAddr.number || '11';
+const loadNum    = escapeXml((rawLoadNum && rawLoadNum !== '0') ? rawLoadNum : '11');
+const loadZip    = escapeXml((fromAddr.postalCode || '11522').trim());
+const loadCity   = escapeXml((fromAddr.city || 'ΑΘΗΝΑ').trim());
+  let issuerExtraXml = '';
+  if (isMovementOnly) {
+    issuerExtraXml = `
+      <name>${escapeXml(data.issuerName || 'MARANTH MON IKE')}</name>
+      <address>
+        <street>${loadStreet}</street>
+        <number>${loadNum}</number>
+        <postalCode>${loadZip}</postalCode>
+        <city>${loadCity}</city>
+      </address>`;
+  }
+
+  const issuerXml = `    <issuer>
+      <vatNumber>${data.issuerAfm.replace(/\D/g, '')}</vatNumber>
+      <country>${data.issuerCountry || 'GR'}</country>
+      <branch>${data.issuerBranch ?? 0}</branch>${issuerExtraXml}
+    </issuer>`;
+
+  // ---------------------------------------------------------------------------
+  // 2. Counterpart XML (Exact AADE Phase B Specifications)
+  // ---------------------------------------------------------------------------
+ const toAddr: AddressShape = (data.movement?.addressTo as AddressShape) || {};
+const delStreet = escapeXml((toAddr.street || data.counterpartAddress?.street || 'ΟΚΑΑ Λ35 Λ37 Μ36').trim());
+const rawDelNum = toAddr.number || data.counterpartAddress?.number || '1';
+const delNum    = escapeXml((rawDelNum && rawDelNum !== '0') ? rawDelNum : '1');
+const delZip    = escapeXml((toAddr.postalCode || data.counterpartAddress?.postalCode || '18233').trim());
+const delCity   = escapeXml((toAddr.city || data.counterpartAddress?.city || 'ΑΓ Ι ΡΕΝΤΗΣ').trim());
+
   let counterpartXml = '';
-  if (data.counterpartAfm && data.counterpartAfm.trim() !== '') {
-    const cpCountry = data.counterpartCountry || 'GR';
+  if (is92) {
+    // 9.2: strictly 000000000 with mandatory name and destination address
+    counterpartXml = `
+    <counterpart>
+      <vatNumber>000000000</vatNumber>
+      <country>GR</country>
+      <branch>0</branch>
+      <name>ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΔΙΑΚΙΝΗΣΗ</name>
+      <address>
+        <street>${delStreet}</street>
+        <number>${delNum}</number>
+        <postalCode>${delZip}</postalCode>
+        <city>${delCity}</city>
+      </address>
+    </counterpart>`;
+  } else if (data.counterpartAfm && data.counterpartAfm.replace(/\D/g, '').trim() !== '') {
+    const cpCountry = (data.counterpartCountry || 'GR').toUpperCase();
     const isGreek = cpCountry === 'GR';
 
-    // AADE Rule 220: <name> is strictly forbidden if counterpart is Greek
-    const nameTag = (!isGreek && data.counterpartName)
-      ? `<name>${escapeXml(data.counterpartName)}</name>`
+    const shouldIncludeName = !isGreek || isMovementOnly;
+    const nameTag = (shouldIncludeName && data.counterpartName)
+      ? `\n      <name>${escapeXml(data.counterpartName)}</name>`
       : '';
 
     let addressXml = '';
-    if (data.counterpartAddress?.street) {
+    if (delStreet) {
       addressXml = `
       <address>
-        <street>${escapeXml(data.counterpartAddress.street)}</street>
-        <number>${escapeXml(data.counterpartAddress.number || '')}</number>
-        <postalCode>${escapeXml(data.counterpartAddress.postalCode || '')}</postalCode>
-        <city>${escapeXml(data.counterpartAddress.city || '')}</city>
+        <street>${delStreet}</street>
+        <number>${delNum}</number>
+        <postalCode>${delZip}</postalCode>
+        <city>${delCity}</city>
       </address>`;
     }
 
     counterpartXml = `
     <counterpart>
-      <vatNumber>${data.counterpartAfm.trim()}</vatNumber>
+      <vatNumber>${data.counterpartAfm.replace(/\D/g, '').trim()}</vatNumber>
       <country>${cpCountry}</country>
       <branch>${data.counterpartBranch ?? 0}</branch>${nameTag}${addressXml}
     </counterpart>`;
   }
 
-  // 2. Transport Header (Only for 9.3 or movement-bearing invoices)
-  let transportHeaderXml = '';
-  if (isType93 && data.movement) {
-    const mv = data.movement;
-    const loadingAddr = mv.addressFrom?.street
-      ? `<loadingAddress>
-          <street>${escapeXml(mv.addressFrom.street)}</street>
-          <number>${escapeXml(mv.addressFrom.number || '')}</number>
-          <postalCode>${escapeXml(mv.addressFrom.postalCode)}</postalCode>
-          <city>${escapeXml(mv.addressFrom.city)}</city>
-        </loadingAddress>`
-      : '';
+  // ---------------------------------------------------------------------------
+  // 3. Invoice Header (Strict Sequence According to XSD)
+  // ---------------------------------------------------------------------------
+  let headerTags = `
+      <series>${escapeXml(data.series)}</series>
+      <aa>${data.aa}</aa>
+      <issueDate>${data.issueDate}</issueDate>
+      <invoiceType>${invType}</invoiceType>`;
 
-    const deliveryAddr = mv.addressTo?.street
-      ? `<deliveryAddress>
-          <street>${escapeXml(mv.addressTo.street)}</street>
-          <number>${escapeXml(mv.addressTo.number || '')}</number>
-          <postalCode>${escapeXml(mv.addressTo.postalCode)}</postalCode>
-          <city>${escapeXml(mv.addressTo.city)}</city>
-        </deliveryAddress>`
-      : '';
+  if (!isMovementOnly) {
+    headerTags += `\n      <currency>${data.currency || 'EUR'}</currency>`;
+  }
 
-    transportHeaderXml = `
+  // Mandatory Correlated MARK for 9.1
+  const corrMark = data.movement?.correlatedMark;
+  if (corrMark && !is92) {
+    headerTags += `\n      <correlatedInvoices>${escapeXml(String(corrMark).trim())}</correlatedInvoices>`;
+  }
+
+  // Movement Header Attributes
+  if (isMovementOnly || data.movement) {
+    const mv = data.movement || {};
+    const dt = mv.dispatchDateTime ? String(mv.dispatchDateTime).trim() : '';
+    let dDate = data.issueDate;
+    let dTime = '08:30:00';
+
+    if (dt.includes('T')) {
+      const parts = dt.split('T');
+      dDate = parts[0];
+      dTime = parts[1].length === 5 ? parts[1] + ':00' : parts[1];
+    }
+
+    headerTags += `\n      <dispatchDate>${dDate}</dispatchDate>`;
+    headerTags += `\n      <dispatchTime>${dTime}</dispatchTime>`;
+
+    if (mv.vehicleNumber) {
+      headerTags += `\n      <vehicleNumber>${escapeXml(mv.vehicleNumber.trim())}</vehicleNumber>`;
+    }
+
+    const movePurpose = Number(mv.movePurpose) || (isMovementOnly ? 1 : 1);
+    headerTags += `\n      <movePurpose>${movePurpose}</movePurpose>`;
+
+    headerTags += `
       <otherDeliveryNoteHeader>
-        ${loadingAddr}
-        ${deliveryAddr}
-        <startDateTime>${mv.dispatchDateTime || data.issueDate + 'T08:00:00'}</startDateTime>
-        <vehicleNumber>${escapeXml(mv.vehicleNumber || '')}</vehicleNumber>
-        <movePurpose>${mv.movePurpose || 1}</movePurpose>
+        <loadingAddress>
+          <street>${loadStreet}</street>
+          <number>${loadNum}</number>
+          <postalCode>${loadZip}</postalCode>
+          <city>${loadCity}</city>
+        </loadingAddress>
+        <deliveryAddress>
+          <street>${delStreet}</street>
+          <number>${delNum}</number>
+          <postalCode>${delZip}</postalCode>
+          <city>${delCity}</city>
+        </deliveryAddress>
       </otherDeliveryNoteHeader>`;
   }
 
-  // 3. Payment Methods (Omitted for 9.3 movement notes, mandatory for 1.1, 2.1, 11.1)
+  // ---------------------------------------------------------------------------
+  // 4. Payment Methods (Omitted on pure movement notes)
+  // ---------------------------------------------------------------------------
   let paymentMethodsXml = '';
-  if (!isType93) {
-    const payType = data.paymentMethodType ?? (isRetailService ? 1 : 3);
+  if (!isMovementOnly) {
+    const payType = data.paymentMethodType ?? (isRetail ? 1 : 3);
     paymentMethodsXml = `
     <paymentMethods>
       <paymentMethodDetails>
         <type>${payType}</type>
-        <amount>${data.totalGross.toFixed(2)}</amount>
+        <amount>${Number(data.totalGross || 0).toFixed(2)}</amount>
       </paymentMethodDetails>
     </paymentMethods>`;
   }
 
-  // 4. Line Items XML
+  // ---------------------------------------------------------------------------
+  // 5. Line Items (Details)
+  // ---------------------------------------------------------------------------
   const lineItemsXml = data.lines
     .map((line, index) => {
       const lineNum = line.lineNumber ?? (index + 1);
-      const net = Number(line.netValue || 0).toFixed(2);
-      const vatAmt = Number(line.vatAmount || 0).toFixed(2);
-      const vatCat = line.vatCategory ?? line.vatRateCategory ?? (isType93 ? 8 : 1);
+      const net = isMovementOnly ? '0.00' : Number(line.netValue || 0).toFixed(2);
+      const vatCat = isMovementOnly ? 8 : (line.vatCategory ?? line.vatRateCategory ?? 1);
+      const vatAmt = isMovementOnly ? '0.00' : Number(line.vatAmount || 0).toFixed(2);
+      const qty = Number(line.quantity || 1).toFixed(2);
+      const unit = String(line.unitMeasurement || 1);
 
-      // AADE Rule 247: <itemDescr> is ONLY allowed on Type 9.3 Delivery Notes
-      const itemDescrTag = (isType93 && line.description)
-        ? `\n      <itemDescr>${escapeXml(line.description)}</itemDescr>`
+      // itemDescr is required on pure movement documents
+      const itemDescrTag = (isMovementOnly || line.description)
+        ? `\n      <itemDescr>${escapeXml(line.description || 'Εμπόρευμα')}</itemDescr>`
         : '';
 
-      const recTypeTag = isType93 ? '\n      <recType>6</recType>' : '';
-
-      // Determine classification according to document type:
-      // 1.1 => category1_1 (Goods/Merchandise)
-      // 2.1 => category1_3 (Services)
-      // 11.1 => category1_3 (Retail Services)
       let classificationXml = '';
-      if (!isType93) {
-        const defaultCategory = (isServiceInvoice || isRetailService) ? 'category1_3' : 'category1_1';
-        const defaultType = (isServiceInvoice || isRetailService) ? 'E3_561_003' : 'E3_561_001';
+      if (isMovementOnly) {
+        classificationXml = `
+      <incomeClassification>
+        <ic:classificationCategory>category3</ic:classificationCategory>
+        <ic:amount>0.00</ic:amount>
+      </incomeClassification>`;
+      } else {
+        const defaultCategory = (isServiceInvoice || isRetail) ? 'category1_3' : 'category1_1';
+        const defaultType = isRetail ? 'E3_561_003' : (isServiceInvoice ? 'E3_561_002' : 'E3_561_001');
 
         const classCat = line.incomeClassification?.classificationCategory || line.classificationCategory || defaultCategory;
         const classType = line.incomeClassification?.classificationType || line.classificationType || defaultType;
@@ -172,7 +268,9 @@ export function buildInvoicesDocXml(data: InvoicePayload): string {
 
       return `
     <invoiceDetails>
-      <lineNumber>${lineNum}</lineNumber>${recTypeTag}${itemDescrTag}
+      <lineNumber>${lineNum}</lineNumber>${itemDescrTag}
+      <quantity>${qty}</quantity>
+      <measurementUnit>${unit}</measurementUnit>
       <netValue>${net}</netValue>
       <vatCategory>${vatCat}</vatCategory>
       <vatAmount>${vatAmt}</vatAmount>${classificationXml}
@@ -180,11 +278,19 @@ export function buildInvoicesDocXml(data: InvoicePayload): string {
     })
     .join('');
 
-  // 5. Summary Income Classification (Omitted for 9.3)
+  // ---------------------------------------------------------------------------
+  // 6. Summary Totals & Income Classification
+  // ---------------------------------------------------------------------------
   let summaryClassificationXml = '';
-  if (!isType93) {
-    const defaultCategory = (isServiceInvoice || isRetailService) ? 'category1_3' : 'category1_1';
-    const defaultType = (isServiceInvoice || isRetailService) ? 'E3_561_003' : 'E3_561_001';
+  if (isMovementOnly) {
+    summaryClassificationXml = `
+      <incomeClassification>
+        <ic:classificationCategory>category3</ic:classificationCategory>
+        <ic:amount>0.00</ic:amount>
+      </incomeClassification>`;
+  } else {
+    const defaultCategory = (isServiceInvoice || isRetail) ? 'category1_3' : 'category1_1';
+    const defaultType = isRetail ? 'E3_561_003' : (isServiceInvoice ? 'E3_561_002' : 'E3_561_001');
 
     summaryClassificationXml = `
       <incomeClassification>
@@ -194,39 +300,31 @@ export function buildInvoicesDocXml(data: InvoicePayload): string {
       </incomeClassification>`;
   }
 
-  // 6. Strict XSD-ordered InvoiceSummary
-  // Order: totalNetValue -> totalVatAmount -> totalWithheldAmount -> totalOtherTaxesAmount -> totalStampDutyAmount -> totalFeesAmount -> totalDeductionsAmount -> totalGrossValue
+  const netTotal   = isMovementOnly ? '0.00' : Number(data.totalNet || 0).toFixed(2);
+  const vatTotal   = isMovementOnly ? '0.00' : Number(data.totalVat || 0).toFixed(2);
+  const grossTotal = isMovementOnly ? '0.00' : Number(data.totalGross || 0).toFixed(2);
+
   const invoiceSummaryXml = `
     <invoiceSummary>
-      <totalNetValue>${data.totalNet.toFixed(2)}</totalNetValue>
-      <totalVatAmount>${data.totalVat.toFixed(2)}</totalVatAmount>
+      <totalNetValue>${netTotal}</totalNetValue>
+      <totalVatAmount>${vatTotal}</totalVatAmount>
       <totalWithheldAmount>0.00</totalWithheldAmount>
-      <totalOtherTaxesAmount>0.00</totalOtherTaxesAmount>
-      <totalStampDutyAmount>0.00</totalStampDutyAmount>
       <totalFeesAmount>0.00</totalFeesAmount>
+      <totalStampDutyAmount>0.00</totalStampDutyAmount>
+      <totalOtherTaxesAmount>0.00</totalOtherTaxesAmount>
       <totalDeductionsAmount>0.00</totalDeductionsAmount>
-      <totalGrossValue>${data.totalGross.toFixed(2)}</totalGrossValue>${summaryClassificationXml}
+      <totalGrossValue>${grossTotal}</totalGrossValue>${summaryClassificationXml}
     </invoiceSummary>`;
 
-  // 7. Full Document Envelope
+  // ---------------------------------------------------------------------------
+  // 7. Full XML Envelope
+  // ---------------------------------------------------------------------------
   return `<?xml version="1.0" encoding="UTF-8"?>
 <InvoicesDoc xmlns="http://www.aade.gr/myDATA/invoice/v1.0"
              xmlns:ic="https://www.aade.gr/myDATA/incomeClassificaton/v1.0">
-  <invoice>
-    <issuer>
-      <vatNumber>${data.issuerAfm}</vatNumber>
-      <country>${data.issuerCountry || 'GR'}</country>
-      <branch>${data.issuerBranch ?? 0}</branch>
-    </issuer>${counterpartXml}
-    <invoiceHeader>
-      <series>${data.series}</series>
-      <aa>${data.aa}</aa>
-      <issueDate>${data.issueDate}</issueDate>
-      <invoiceType>${data.invoiceType}</invoiceType>
-      <currency>${data.currency || 'EUR'}</currency>${transportHeaderXml}
-    </invoiceHeader>${paymentMethodsXml}
-    ${lineItemsXml}
-    ${invoiceSummaryXml}
+  <invoice>${issuerXml}${counterpartXml}
+    <invoiceHeader>${headerTags}
+    </invoiceHeader>${paymentMethodsXml}${lineItemsXml}${invoiceSummaryXml}
   </invoice>
 </InvoicesDoc>`.trim();
 }

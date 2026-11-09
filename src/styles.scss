@@ -21,6 +21,8 @@
 /* ==========================================================================
    MARANTH PRO - UNIFIED PRINT ENGINE
    ========================================================================== */
+
+/* Default page setup (A4 Sheets) */
 @page {
   size: A4 portrait;
   margin: 6mm 8mm;
@@ -58,32 +60,43 @@
     visibility: visible !important;
   }
 
-  /* 4. A4 Sheet layout rules (Flex column pins footer to bottom of A4) */
+  /* 4. A4 Sheet layout rules (Flex column pins footer, expands naturally for multi-line) */
   #maranth-print-portal .print-sheet {
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
     width: 100% !important;
     max-width: 190mm !important;
-    min-height: 265mm !important; /* Locks full A4 height without creating Page 2 */
-    height: 265mm !important;
+    min-height: 260mm !important;
     margin: 0 auto !important;
     padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
-    page-break-after: avoid !important;
-    break-after: avoid !important;
     box-sizing: border-box !important;
   }
 
-  /* 5. Thermal 80mm layout rules */
-  #maranth-print-portal .thermal-receipt {
+  /* 5. Thermal 80mm Roll Mode */
+  body.thermal-mode {
+    width: 80mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.thermal-mode #maranth-print-portal {
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.thermal-mode #maranth-print-portal .thermal-receipt {
     display: block !important;
     width: 74mm !important;
     margin: 0 auto !important;
-    padding: 4px !important;
+    padding: 2mm 1mm !important;
     border: none !important;
     box-shadow: none !important;
+    box-sizing: border-box !important;
   }
 
   /* 6. Footer Table Lockdown (Forces Side-by-Side QR & Totals) */
@@ -110,7 +123,7 @@
     vertical-align: top !important;
   }
 
-  /* 7. Prevent awkward row breaks across pages */
+  /* 7. Row breaks protection */
   tr, .avoid-break {
     break-inside: avoid !important;
     page-break-inside: avoid !important;

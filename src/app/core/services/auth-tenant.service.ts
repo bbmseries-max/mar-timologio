@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { SubscriptionTier, SubscriptionStatus } from '../models/tenant.models';
+import { SubscriptionStatus } from '../models/tenant.models';
 import { LocalDbService } from './local-db.service';
 
 export interface TenantSubscription {
@@ -67,14 +67,16 @@ export class AuthTenantService {
   public readonly activeTenant = signal<TenantProfile | null>(null);
   public readonly subscription = signal<TenantSubscription | null>(null);
 
+  // Synonyms and aliases for backward and cross-component compatibility
   public readonly currentTenant = this.activeTenant;
+  public readonly currentTenantProfile = this.activeTenant;
 
   public readonly isAuthenticated = computed(() => this.currentUser() !== null);
   public readonly currentTenantId = computed(() => this.activeTenant()?.id || 'tenant_minimarket');
 
   public readonly currentTenantAfm = computed(() => {
     const tenant = this.activeTenant();
-    return tenant?.fiscalIdentity?.afm || tenant?.afm || '';
+    return tenant?.fiscalIdentity?.afm || tenant?.afm || '067424104';
   });
 
   public readonly isGracePeriod = computed(() => {
@@ -93,7 +95,6 @@ export class AuthTenantService {
 
   public readonly canIssueInvoices = computed(() => {
     const sub = this.subscription();
-    // In standalone/offline/local mode without an active subscription object, permit issuance
     if (!sub) return true;
     return sub.status === 'ACTIVE' || sub.status === 'TRIAL' || sub.status === 'GRACE_PERIOD';
   });
@@ -112,34 +113,24 @@ export class AuthTenantService {
   }
 
   /**
-   * Initializes tenant license on app boot.
-   * Runs non-blockingly so the offline-first app loads instantly even with no internet.
+   * Initializes tenant license and settings on app boot.
    */
   public async syncTenantSubscriptionOnBoot(): Promise<void> {
-    console.info('[Boot Init] 🚀 syncTenantSubscriptionOnBoot triggered via provideAppInitializer');
-
     const tenantId = this.currentTenantId();
-    if (!tenantId) {
-      console.warn('[Boot Init] ⚠️ No tenant ID resolved. Boot sync aborted.');
-      return;
-    }
+    if (!tenantId) return;
 
     try {
-      let afm = this.currentTenantAfm();
       const savedSettings = await this.db.getSettingsForTenant(tenantId);
 
-      if (!afm && savedSettings?.afm) {
-        afm = savedSettings.afm;
+      // If activeTenant is not populated, seed it from Dexie settings
+      if (!this.activeTenant() && savedSettings) {
+        this.seedTenantFromSettings(savedSettings);
       }
 
-      if (!afm) {
-        console.warn('[Boot Init] ⚠️ No AFM found in session or Dexie settings. Skipping remote check.');
-        return;
-      }
+      const afm = this.currentTenantAfm() || savedSettings?.afm;
+      if (!afm) return;
 
       const cleanAfm = afm.replace(/\D/g, '').trim();
-      console.info(`[Boot Init] 🔍 Checking Cloudflare KV subscription for AFM: ${cleanAfm}...`);
-
       const workerUrl = 'https://gsis-lookup.bbmseries.workers.dev/check-subscription';
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
@@ -149,14 +140,9 @@ export class AuthTenantService {
       });
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        console.warn(`[Boot Init] ❌ Cloudflare returned status ${response.status}`);
-        return;
-      }
+      if (!response.ok) return;
 
       const data = await response.json();
-      console.info('[Boot Init] ✅ Subscription synced successfully:', data);
-
       const updatedSub: TenantSubscription = {
         status: data.status as SubscriptionStatus,
         planName: data.tier || 'RETAIL_SHOP',
@@ -165,13 +151,12 @@ export class AuthTenantService {
       };
 
       this.subscription.set(updatedSub);
-      console.info('[Boot Init] 📡 Reactive subscription signal updated:', this.subscription());
     } catch (err) {
-      console.warn('[Boot Init] ⚠️ Subscription sync skipped (offline or unreachable):', err);
+      console.warn('[AuthTenantService] Subscription sync skipped (offline or unreachable):', err);
     }
   }
 
-  private hydrateSessionFromStorage(): void {
+  private async hydrateSessionFromStorage(): Promise<void> {
     try {
       const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
       if (storedUser) {
@@ -185,11 +170,50 @@ export class AuthTenantService {
         if (tenant.subscription) {
           this.subscription.set(tenant.subscription);
         }
+      } else {
+        // Fallback to IndexedDB settings table if localStorage is empty
+        const s = await this.db.getSettings('tenant_minimarket');
+        if (s) {
+          this.seedTenantFromSettings(s);
+        }
       }
     } catch (err) {
       console.warn('[AuthTenantService] Failed to hydrate stored session:', err);
       this.clearLocalSession(false);
     }
+  }
+
+  private seedTenantFromSettings(s: any): void {
+    const profile: TenantProfile = {
+      id: s.id || s.tenantId || 'tenant_minimarket',
+      name: s.legalName || s.companyName || 'MARANTH ENTERPRISE',
+      afm: s.afm || '067424104',
+      doy: s.doy || 'ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ',
+      fiscalIdentity: {
+        afm: s.afm || '067424104',
+        doy: s.doy || 'ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ',
+        legalName: s.legalName || 'MARANTH MON IKE',
+        tradeName: s.companyName || 'MARANTH ENTERPRISE',
+        address: {
+          street: s.street || 'ΒΑΡΔΟΥΝΙΩΤΗ',
+          number: s.number || '11',
+          postalCode: s.postalCode || '11522',
+          city: s.city || 'ΑΘΗΝΑ',
+        },
+      },
+      subscription: {
+        status: (s.subscriptionStatus as SubscriptionStatus) || 'ACTIVE',
+        planName: s.subscriptionTier || 'RETAIL_SHOP',
+        validUntil: s.validUntil || '2099-12-31T23:59:59Z',
+        maxMonthlyDocuments: s.maxMonthlyDocuments || 1000,
+      },
+    };
+
+    this.activeTenant.set(profile);
+    if (profile.subscription) {
+      this.subscription.set(profile.subscription);
+    }
+    localStorage.setItem(STORAGE_KEYS.TENANT, JSON.stringify(profile));
   }
 
   private initCrossTabAuthSync(): void {

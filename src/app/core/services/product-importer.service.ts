@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { LocalDbService } from './local-db.service';
 import { ColumnMappingConfig, ImportPreviewItem, ParsedRawRow } from '../models/import.models';
 import { Product } from '../models/database.models';
+import { roundToTwoDecimals } from '../utils/fiscal-engine';
 
 @Injectable({ providedIn: 'root' })
 export class ProductImporterService {
@@ -32,7 +33,7 @@ export class ProductImporterService {
   }
 
   /**
-   * Intelligently auto-detects column names based on common Greek (with/without accents) and English headers.
+   * Intelligently auto-detects column names based on common Greek and English headers.
    */
   public guessColumnMapping(headers: string[]): ColumnMappingConfig {
     const normalize = (str: string) =>
@@ -53,7 +54,7 @@ export class ProductImporterService {
         if (found) return found.original;
       }
 
-      // Partial / Contains match
+      // Partial match
       for (const c of cleanCandidates) {
         const found = normalizedHeaders.find((h) => h.clean.includes(c));
         if (found) return found.original;
@@ -85,7 +86,6 @@ export class ProductImporterService {
       const rawName = String(row[config.nameCol] ?? '').trim();
       let rawBarcode = config.barcodeCol ? String(row[config.barcodeCol] ?? '').trim() : '';
 
-      // Clean barcode of trailing decimal artifacts like .0
       if (rawBarcode) {
         rawBarcode = rawBarcode.replace(/\.0+$/, '').trim();
       }
@@ -95,7 +95,14 @@ export class ProductImporterService {
       let vatRate = config.defaultVatRate;
       if (config.vatCol && row[config.vatCol] !== undefined && row[config.vatCol] !== '') {
         const parsedVat = this.parseNumeric(row[config.vatCol]);
-        if (parsedVat >= 0) vatRate = parsedVat;
+        // Handle decimal Excel percentage formatting (0.24 -> 24)
+        if (parsedVat > 0 && parsedVat < 1) {
+          vatRate = Math.round(parsedVat * 100);
+        } else if (parsedVat >= 1) {
+          vatRate = parsedVat;
+        } else if (parsedVat === 0) {
+          vatRate = 0;
+        }
       }
 
       if (!rawName) {
@@ -128,11 +135,11 @@ export class ProductImporterService {
       let grossPrice: number;
 
       if (config.isPriceGross) {
-        grossPrice = Number(rawPriceVal.toFixed(2));
-        netPrice = Number((rawPriceVal / (1 + vatRate / 100)).toFixed(2));
+        grossPrice = roundToTwoDecimals(rawPriceVal);
+        netPrice = roundToTwoDecimals(rawPriceVal / (1 + vatRate / 100));
       } else {
-        netPrice = Number(rawPriceVal.toFixed(2));
-        grossPrice = Number((rawPriceVal * (1 + vatRate / 100)).toFixed(2));
+        netPrice = roundToTwoDecimals(rawPriceVal);
+        grossPrice = roundToTwoDecimals(rawPriceVal * (1 + vatRate / 100));
       }
 
       return {
@@ -166,8 +173,12 @@ export class ProductImporterService {
     const nameMap = new Map<string, string>();
 
     for (const p of existingProducts) {
-      if (p.barcode) barcodeMap.set(p.barcode.trim(), p.id);
-      if (p.name) nameMap.set(p.name.toLowerCase().trim(), p.id);
+      if (p.barcode && p.barcode.trim()) {
+        barcodeMap.set(p.barcode.trim(), p.id);
+      }
+      if (p.name && p.name.trim()) {
+        nameMap.set(p.name.toLowerCase().trim(), p.id);
+      }
     }
 
     const now = Date.now();
@@ -177,19 +188,21 @@ export class ProductImporterService {
       const cleanBarcode = (item.barcode || '').trim();
       const cleanName = item.name.toLowerCase().trim();
 
-      // Check against both DB and current batch for deduplication
+      // Deduplicate by barcode first (primary unique key in retail)
       let existingId: string | undefined;
-      if (cleanBarcode && barcodeMap.has(cleanBarcode)) {
+      if (cleanBarcode) {
         existingId = barcodeMap.get(cleanBarcode);
-      } else if (nameMap.has(cleanName)) {
+      }
+      // If no barcode or barcode not found, match by exact name
+      if (!existingId && cleanName) {
         existingId = nameMap.get(cleanName);
       }
 
       const assignedId = existingId || crypto.randomUUID();
 
-      // Register in maps to prevent within-file duplicate collisions
+      // Register in maps for the batch
       if (cleanBarcode) barcodeMap.set(cleanBarcode, assignedId);
-      nameMap.set(cleanName, assignedId);
+      if (cleanName) nameMap.set(cleanName, assignedId);
 
       entities.push({
         id: assignedId,
@@ -197,7 +210,7 @@ export class ProductImporterService {
         name: item.name.trim(),
         price: item.netPrice,
         taxRate: item.vatRate,
-        barcode: cleanBarcode, // Safe string for compound indices
+        barcode: cleanBarcode,
         stockQuantity: 0,
         isActive: true,
         unitMeasurement: '1',
@@ -206,8 +219,8 @@ export class ProductImporterService {
       } as any);
     }
 
-    // Single fast Dexie transaction
-    await (this.db as any).products.bulkPut(entities);
+    // Atomic bulk insert/update
+    await this.db.products.bulkPut(entities);
     return entities.length;
   }
 

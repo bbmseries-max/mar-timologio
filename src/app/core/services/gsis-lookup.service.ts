@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, from, of, throwError } from 'rxjs';
-import { switchMap, catchError, tap } from 'rxjs/operators';
+import { switchMap, catchError } from 'rxjs/operators';
 import { isValidGreekAfm } from '../utils/fiscal-engine';
 import { LocalDbService, LocalCustomerRecord } from './local-db.service';
 import { AuthTenantService } from './auth-tenant.service';
@@ -39,96 +39,109 @@ export class GsisLookupService {
    * 3. EU VIES Open Registry (Fallback)
    */
   public lookupAfm(afm: string): Observable<GsisCompanyRecord> {
-  const cleanAfm = (afm || '').replace(/\D/g, '').trim();
-  
+    const cleanAfm = (afm || '').replace(/\D/g, '').trim();
 
-  if (!isValidGreekAfm(cleanAfm)) {
-    return throwError(() => new Error('Το Α.Φ.Μ. δεν είναι αριθμητικά έγκυρο (Modulo 11).'));
-  }
+    if (!isValidGreekAfm(cleanAfm)) {
+      return throwError(() => new Error('Το Α.Φ.Μ. δεν είναι αριθμητικά έγκυρο (Modulo 11).'));
+    }
 
-  const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
+    const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
 
-  return from(this.checkLocalDexieStorage(cleanAfm)).pipe(
-    switchMap((localRecord) => {
-      // Step 1: Hit from Dexie Cache
-      if (localRecord && localRecord.legalName?.trim()) {
-        console.log('[GSIS Service] Serving from local Dexie cache:', localRecord);
-        return of({ ...localRecord, source: 'LOCAL_CACHE' as const });
-      }
+    return from(this.checkLocalDexieStorage(cleanAfm)).pipe(
+      switchMap((localRecord) => {
+        // Step 1: Hit from Dexie Cache
+        if (localRecord && localRecord.legalName?.trim()) {
+          console.log('[GSIS Service] Serving from local Dexie cache:', localRecord);
+          return of({ ...localRecord, source: 'LOCAL_CACHE' as const });
+        }
 
-      // Step 2: Query Settings for GSIS Credentials
-      return from(this.db.getSettingsForTenant(tenantId)).pipe(
-        switchMap((settings: any) => {
-          // Hardcode sandbox fallback credentials if settings are empty in local dev
-          const username = (settings?.gsisUsername || '').trim() || 'MARANTH-APP26';
-          const password = (settings?.gsisPassword || '').trim() || 'Test@Test33';
-          const callerAfm = (settings?.afm ? settings.afm.replace(/\D/g, '').trim() : '') || '067424104';
+        // Step 2: Query Settings for GSIS Credentials
+        return from(this.db.getSettingsForTenant(tenantId)).pipe(
+          switchMap((settings: any) => {
+            const isProd = settings?.isProduction === true || settings?.fiscalEnvironment === 'production';
 
-          console.log('[GSIS Service] Using credentials:', { username, callerAfm, targetAfm: cleanAfm });
+let username = (settings?.gsisUsername || '').trim();
+let password = (settings?.gsisPassword || '').trim();
+let callerAfm = (settings?.afm ? String(settings.afm).replace(/\D/g, '').trim() : '');
 
-          const gsisPayload = {
-            action: 'gsis_lookup',
-            tenantId: tenantId,
-            targetAfm: cleanAfm,
-            afm: cleanAfm,
-            callerAfm: callerAfm,
-            username: username,
-            password: password,
-          };
-
-          console.log('[GSIS Service] Dispatching to worker:', this.gsisEndpoint, gsisPayload);
-
-          return this.http.post<any>(this.gsisEndpoint, gsisPayload).pipe(
-            switchMap((res: any) => {
-              console.log('[GSIS Service] Raw HTTP response received:', res);
-
-              const data = res?.data || res;
-              const legalName = data?.legalName || res?.legalName;
-
-              if (!res || res.success === false || !legalName) {
-                console.warn('[GSIS Service] Worker returned unsuccessful, falling back to VIES. Response:', res);
-                return this.lookupViaVies(cleanAfm);
-              }
-
-              const rawDoy = data.doyDescr || data.doy || res.doyDescr || res.doy || '';
-              const resolvedDoy = resolveGreekDoy(rawDoy);
-              const street = data.street || res.street || data.postalAddress || '';
-              const number = data.number || res.number || data.postalAddressNo || '1';
-              const postalCode = data.postalCode || res.postalCode || data.postalZipCode || '';
-              const city = data.city || res.city || data.postalAreaDescription || '';
-
-              const mapped: GsisCompanyRecord = {
-                afm: cleanAfm,
-                legalName: legalName.trim(),
-                commercialTitle: data.commercialTitle || res.commercialTitle || legalName.trim(),
-                doy: resolvedDoy,
-                doyDescr: resolvedDoy,
-                postalAddress: street,
-                postalAddressNo: number,
-                postalZipCode: postalCode,
-                postalAreaDescription: city,
-                isNormalVatRegime: true,
-                active: data.deactivation_flag ? data.deactivation_flag === '1' : data.active !== false,
-                source: 'GSIS',
-              };
-
-              // Cache valid GSIS record in Dexie
-              this.saveToDexieStorage(mapped).catch((err) =>
-                console.warn('Failed to cache customer in Dexie:', err)
-              );
-
-              return of(mapped);
-            }),
-            catchError((httpErr) => {
-              console.error('[GSIS Service] HTTP call to worker failed, falling back to VIES:', httpErr);
-              return this.lookupViaVies(cleanAfm);
-            })
-          );
-        })
-      );
-    })
-  );
+// Allow sandbox defaults ONLY when outside production
+if (!isProd) {
+  username = username || 'MARANTH-APP26';
+  password = password || 'Test@Test33';
+  callerAfm = callerAfm || '067424104';
 }
+
+if (isProd && (!username || !password || !callerAfm)) {
+  // If production user omitted credentials, fail gracefully to EU VIES
+  console.warn('[GSIS Service] Production tenant has not configured GSIS credentials. Falling back to VIES.');
+  return this.lookupViaVies(cleanAfm);
+}
+
+            const gsisPayload = {
+              action: 'gsis_lookup',
+              tenantId: tenantId,
+              targetAfm: cleanAfm,
+              afm: cleanAfm,
+              callerAfm: callerAfm,
+              username: username,
+              password: password,
+            };
+
+            return this.http.post<any>(this.gsisEndpoint, gsisPayload).pipe(
+              switchMap((res: any) => {
+                const data = res?.data || res;
+                const legalName = data?.legalName || res?.legalName;
+
+                if (!res || res.success === false || !legalName) {
+                  console.warn('[GSIS Service] GSIS lookup unsuccessful, falling back to VIES:', res);
+                  return this.lookupViaVies(cleanAfm);
+                }
+
+                const rawDoy = data.doyDescr || data.doy || res.doyDescr || res.doy || '';
+                const resolvedDoy = resolveGreekDoy(rawDoy);
+                const street = (data.street || res.street || data.postalAddress || '').trim();
+                const rawNum = data.number || res.number || data.postalAddressNo || '';
+                const number = (rawNum && rawNum !== '0') ? String(rawNum).trim() : '1';
+                const postalCode = (data.postalCode || res.postalCode || data.postalZipCode || '').trim();
+                const city = (data.city || res.city || data.postalAreaDescription || '').trim();
+
+                // Accurate deactivation logic: deactivation_flag '1' or 'Y' means DEACTIVATED
+                const isDeactivated = data.deactivation_flag != null
+                  ? String(data.deactivation_flag).trim() === '1' || String(data.deactivation_flag).trim().toUpperCase() === 'Y'
+                  : data.active === false;
+
+                const mapped: GsisCompanyRecord = {
+                  afm: cleanAfm,
+                  legalName: legalName.trim(),
+                  commercialTitle: (data.commercialTitle || res.commercialTitle || legalName).trim(),
+                  doy: resolvedDoy,
+                  doyDescr: resolvedDoy,
+                  postalAddress: street,
+                  postalAddressNo: number,
+                  postalZipCode: postalCode,
+                  postalAreaDescription: city,
+                  isNormalVatRegime: true,
+                  active: !isDeactivated,
+                  source: 'GSIS',
+                };
+
+                // Cache valid GSIS record in Dexie
+                this.saveToDexieStorage(mapped).catch((err) =>
+                  console.warn('Failed to cache customer in Dexie:', err)
+                );
+
+                return of(mapped);
+              }),
+              catchError((httpErr) => {
+                console.error('[GSIS Service] GSIS HTTP call failed, falling back to VIES:', httpErr);
+                return this.lookupViaVies(cleanAfm);
+              })
+            );
+          })
+        );
+      })
+    );
+  }
 
   /**
    * Queries EU VIES and parses the combined Greek address string.
@@ -144,12 +157,12 @@ export class GsisLookupService {
 
         const record: GsisCompanyRecord = {
           afm,
-          legalName: viesRes.legalName,
-          commercialTitle: viesRes.legalName,
+          legalName: viesRes.legalName.trim(),
+          commercialTitle: viesRes.legalName.trim(),
           doy: '',
           doyDescr: '',
           postalAddress: parsedAddress.street,
-          postalAddressNo: parsedAddress.number,
+          postalAddressNo: parsedAddress.number || '1',
           postalZipCode: parsedAddress.postalCode,
           postalAreaDescription: parsedAddress.city,
           isNormalVatRegime: true,
@@ -165,37 +178,49 @@ export class GsisLookupService {
   /**
    * Parses raw VIES addresses such as:
    * "ΛΕΩΦΟΡΟΣ ΚΗΦΙΣΙΑΣ 99\n15124 ΜΑΡΟΥΣΙ" or "ΣΤΑΔΙΟΥ 15, 10561, ΑΘΗΝΑ"
+   * or single-line combined addresses: "ΟΚΑΑ Λ35 Λ37 Μ36 18233 ΑΓ Ι ΡΕΝΤΗΣ"
    */
   private parseGreekAddressString(raw: string): { street: string; number: string; postalCode: string; city: string } {
-    if (!raw) return { street: '', number: '', postalCode: '', city: '' };
+    if (!raw) return { street: '', number: '1', postalCode: '', city: '' };
 
+    const cleaned = raw.trim().replace(/\s+/g, ' ');
+
+    // 1. Check for 5-digit Greek postal code pattern anywhere in the string
+    const zipMatches = [...cleaned.matchAll(/\b(\d{5})\b/g)];
+    if (zipMatches.length > 0) {
+      const match = zipMatches[zipMatches.length - 1];
+      const postalCode = match[1];
+      const idx = match.index!;
+
+      let beforeZip = cleaned.substring(0, idx).trim().replace(/[\-–—.,]+$/, '');
+      let afterZip = cleaned.substring(idx + 5).trim().replace(/^[\s\-–—.,]+/, '').replace(/[\s\-–—]+(GR|GREECE|ΕΛΛΑΔΑ)$/i, '');
+
+      // Extract street number if trailing digits exist
+      const numMatch = beforeZip.match(/^(.*?)(?:\s+(\d+[A-Za-z\u0370-\u03ff]*))$/);
+      let street = beforeZip;
+      let number = '1';
+
+      if (numMatch && numMatch[2] && numMatch[2] !== '0') {
+        street = numMatch[1]?.trim() || beforeZip;
+        number = numMatch[2].trim();
+      }
+
+      return {
+        street: street || beforeZip,
+        number: number || '1',
+        postalCode,
+        city: afterZip || '',
+      };
+    }
+
+    // 2. Multiline fallback if no 5-digit zip is matched
     const lines = raw.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
-    let streetLine = lines[0] || '';
-    let cityLine = lines[1] || '';
-
-    if (lines.length === 1 && raw.includes(',')) {
-      const parts = raw.split(',').map((p) => p.trim());
-      streetLine = parts[0] || '';
-      cityLine = parts.slice(1).join(' ');
-    }
-
-    let street = streetLine;
-    let number = '';
-    const streetMatch = streetLine.match(/^(.*?)\s+(\d+[\w\-\/]*)$/);
-    if (streetMatch) {
-      street = streetMatch[1].trim();
-      number = streetMatch[2].trim();
-    }
-
-    let postalCode = '';
-    let city = cityLine;
-    const pcMatch = cityLine.match(/(\b\d{3}\s?\d{2}\b)/);
-    if (pcMatch) {
-      postalCode = pcMatch[1].replace(/\s/g, '');
-      city = cityLine.replace(pcMatch[0], '').replace(/[-–,]/g, '').trim();
-    }
-
-    return { street, number, postalCode, city };
+    return {
+      street: lines[0] || cleaned,
+      number: '1',
+      postalCode: '',
+      city: lines[1] || '',
+    };
   }
 
   private async checkLocalDexieStorage(afm: string): Promise<GsisCompanyRecord | null> {
@@ -210,7 +235,7 @@ export class GsisLookupService {
         doy: cachedCustomer.doy || '',
         doyDescr: cachedCustomer.doy || '',
         postalAddress: cachedCustomer.address?.street || '',
-        postalAddressNo: cachedCustomer.address?.number || '',
+        postalAddressNo: cachedCustomer.address?.number || '1',
         postalZipCode: cachedCustomer.address?.postalCode || '',
         postalAreaDescription: cachedCustomer.address?.city || '',
         isNormalVatRegime: true,
@@ -237,7 +262,7 @@ export class GsisLookupService {
       phone: existing?.phone || '',
       address: {
         street: record.postalAddress || '',
-        number: record.postalAddressNo || '',
+        number: record.postalAddressNo || '1',
         postalCode: record.postalZipCode || '',
         city: record.postalAreaDescription || '',
       },
@@ -246,4 +271,6 @@ export class GsisLookupService {
 
     await this.db.saveCustomer(customerRecord);
   }
+
+  
 }

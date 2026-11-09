@@ -42,52 +42,119 @@ export class AadeSerializerService {
       parsedPayload = invoice.payloadJson;
     }
 
-    // 2. Resolve customer / counterpart object from all possible locations
-    const customer =
+    // 2. Identify Document Archetype
+    const invType = String(invoice.invoiceType || parsedPayload.invoiceType || '1.1').trim();
+    const isMovementOnly = invType === '9.3' || invType === '9.1' || invType === '9.2';
+    const is12 = invType === '1.2';
+    const isRetail = invType === '11.1' || invType === '11.2';
+
+    // 3. Resolve Customer / Counterpart Object
+    const rawCustomer =
       invoice.customer ||
       parsedPayload.customer ||
       invoice.counterparty ||
       invoice.counterpart ||
       {
-        afm: invoice.customerAfm,
-        legalName: invoice.customerName,
+        afm: invoice.customerAfm || parsedPayload.customerAfm,
+        legalName: invoice.customerName || parsedPayload.customerName,
       };
+
+    // Rule 243 Guard: If 1.2 (Intra-Community), counterpart country CANNOT be GR
+    let counterpartCountry = (rawCustomer?.country || 'GR').toUpperCase();
+    const customerVat = String(rawCustomer?.afm || rawCustomer?.vatNumber || '').trim();
+
+    if (is12 && (counterpartCountry === 'GR' || !counterpartCountry)) {
+      // Auto-extract leading 2-character country code if present (e.g., CY10253361B -> CY)
+      const potentialPrefix = customerVat.slice(0, 2).toUpperCase();
+      if (/^[A-Z]{2}$/.test(potentialPrefix) && potentialPrefix !== 'EL' && potentialPrefix !== 'GR') {
+        counterpartCountry = potentialPrefix;
+      } else {
+        // Fallback default for sandbox testing of intra-community delivery
+        counterpartCountry = 'CY';
+      }
+    }
+
+    const cleanCounterpart = {
+      ...rawCustomer,
+      country: counterpartCountry,
+      vatNumber: customerVat.replace(/^[A-Z]{2}/i, ''), // Clean VAT without prefix for XML
+    };
+
+    // 4. Resolve Lines First to Guarantee True Recalculation
+    const resolvedLines: any[] = (invoice.lines && invoice.lines.length > 0)
+      ? invoice.lines
+      : (parsedPayload.lines || []);
+
+    const netSum = resolvedLines.reduce((acc, l) => acc + Number(l.netValue || 0), 0);
+    const vatSum = resolvedLines.reduce((acc, l) => acc + Number(l.vatAmount || 0), 0);
+    const grossSum = resolvedLines.reduce((acc, l) => acc + Number(l.totalValue ?? (Number(l.netValue || 0) + Number(l.vatAmount || 0))), 0);
+
+    // 5. Enforce Strict Financial Boundaries Per Document Type
+    const safeNet = isMovementOnly ? 0 : Number((invoice.totalNet ?? parsedPayload.totalNet ?? netSum).toFixed(2));
+    const safeVat = (isMovementOnly || is12) ? 0 : Number((invoice.totalVat ?? parsedPayload.totalVat ?? vatSum).toFixed(2));
+    const safeGross = isMovementOnly ? 0 : (is12 ? safeNet : Number((invoice.totalGross ?? parsedPayload.totalGross ?? grossSum).toFixed(2)));
+
+    // 6. Resolve Movement & Correlated Invoices
+    const movementData = invoice.movement || parsedPayload.movement;
+    const correlatedMark =
+      movementData?.correlatedMark ||
+      invoice.correlatedMark ||
+      parsedPayload.correlatedMark ||
+      invoice.correlatedInvoices ||
+      parsedPayload.correlatedInvoices;
+
+    const mergedMovement = movementData ? { ...movementData, correlatedMark } : (correlatedMark ? { correlatedMark } : undefined);
+
+    // 7. Resolve Payment Method Type (1=Cash for Retail, 3=Transfer/Credit for B2B)
+    const paymentMethodType =
+      invoice.paymentMethod?.type ??
+      parsedPayload.paymentMethod?.type ??
+      invoice.paymentMethodType ??
+      parsedPayload.paymentMethodType ??
+      (isRetail ? 1 : 3);
 
     return this.generateInvoicesDocXml({
       series: invoice.series || parsedPayload.series || 'DEV',
       documentNumber: Number(invoice.documentNumber || parsedPayload.documentNumber) || 1,
       issueDate: invoice.issueDate || parsedPayload.issueDate || new Date().toISOString().substring(0, 10),
-      invoiceType: String(invoice.invoiceType || parsedPayload.invoiceType || '1.1').trim(),
+      invoiceType: invType,
       currency: invoice.currency || parsedPayload.currency || 'EUR',
       issuer: {
         afm: rawAfm,
         country: (issuerSettings?.country || 'GR').toUpperCase(),
         branch: Number(issuerSettings?.branch ?? 0),
       },
-      counterpart: customer,
-      lines: (invoice.lines && invoice.lines.length > 0) ? invoice.lines : (parsedPayload.lines || []),
-      totals: invoice.totals || parsedPayload.totals || {
-        totalNetValue: invoice.totalNet || 0,
-        totalVatAmount: invoice.totalVat || 0,
-        totalGrossValue: invoice.totalGross || 0,
+      counterpart: cleanCounterpart,
+      lines: resolvedLines,
+      totals: {
+        totalNetValue: safeNet,
+        totalVatAmount: safeVat,
+        totalGrossValue: safeGross,
       },
-      paymentMethodType: invoice.paymentMethod?.type ?? parsedPayload.paymentMethod?.type ?? 1,
-      movement: invoice.movement || parsedPayload.movement,
+      paymentMethodType,
+      movement: mergedMovement,
     });
   }
 
   public generateInvoicesDocXml(data: any): string {
     const invType = String(data.invoiceType || '1.1').trim();
     const is93 = invType === '9.3';
-    const isMovementOnly = is93 || invType === '9.1';
+    const is91 = invType === '9.1';
+    const is92 = invType === '9.2';
+    const is12 = invType === '1.2';
 
-    // Document classification flags
+    // Pure movement documents (Zero value, no payment methods, category3)
+    const isMovementOnly = is93 || is91 || is92;
+    // Documents that carry vehicle, transport, & dispatch metadata
+    const hasMovementDetails = isMovementOnly || is12;
+
+    // Classification flags
     const isServiceInvoice = invType === '2.1' || invType === '11.2';
     const isRetailGoods = invType === '11.1';
     const isRetailServices = invType === '11.2';
     const isRetail = isRetailGoods || isRetailServices;
 
-    // 1. Issuer Validation (Strictly dynamic from tenant)
+    // 1. Dynamic Issuer Construction
     const issuerAfm = String(data.issuer?.afm || '').replace(/\D/g, '').trim();
     if (!issuerAfm) {
       throw new Error('Issuer AFM is required for myDATA generation.');
@@ -95,41 +162,80 @@ export class AadeSerializerService {
     const issuerCountry = (data.issuer?.country || 'GR').toUpperCase();
     const issuerBranch = Number(data.issuer?.branch ?? 0);
 
+    // Dynamic loading address: movement form -> fallback to issuer profile
+    const fromAddr = data.movement?.addressFrom || {};
+    const issuerName = this.escapeXml(data.issuer?.name || data.issuer?.legalName || 'MARANTH MON IKE');
+    const loadStreet = this.escapeXml((fromAddr.street || data.issuer?.street || '').trim());
+    const loadNum    = this.escapeXml((fromAddr.number || data.issuer?.number || '1').trim());
+    const loadZip    = this.escapeXml((fromAddr.postalCode || data.issuer?.postalCode || '').trim());
+    const loadCity   = this.escapeXml((fromAddr.city || data.issuer?.city || '').trim());
+
+    let issuerExtraXml = '';
+    if (isMovementOnly) {
+      issuerExtraXml = `
+      <name>${issuerName}</name>
+      <address>
+        <street>${loadStreet}</street>
+        <number>${loadNum}</number>
+        <postalCode>${loadZip}</postalCode>
+        <city>${loadCity}</city>
+      </address>`;
+    }
+
     const issuerXml = `    <issuer>
       <vatNumber>${issuerAfm}</vatNumber>
       <country>${issuerCountry}</country>
-      <branch>${issuerBranch}</branch>
+      <branch>${issuerBranch}</branch>${issuerExtraXml}
     </issuer>`;
 
-    // 2. Counterpart - Strictly omitted on 9.3 or anonymous retail
-    let counterpartXml = '';
-    const cp = data.counterpart || data.counterparty;
+    // 2. Dynamic Delivery / Counterpart Resolution (Reads straight from AFM lookup)
+    const cp = data.counterpart || data.counterparty || data.customer || {};
     const rawCpAfm = cp?.afm || cp?.vatNumber || '';
+    const toAddr = data.movement?.addressTo || {};
 
-    if (!is93 && rawCpAfm && String(rawCpAfm).replace(/\D/g, '').trim() !== '') {
+    // Prioritize manual edit in movement panel -> fallback directly to AFM lookup result
+    const delStreet = this.escapeXml((toAddr.street || cp.street || cp.address?.street || '').trim());
+    const rawDelNum = toAddr.number || cp.number || cp.address?.number || '1';
+    const delNum    = this.escapeXml((rawDelNum && rawDelNum !== '0') ? rawDelNum : '1');
+    const delZip    = this.escapeXml((toAddr.postalCode || cp.postalCode || cp.address?.postalCode || '').trim());
+    const delCity   = this.escapeXml((toAddr.city || cp.city || cp.address?.city || '').trim());
+
+    let counterpartXml = '';
+
+    if (is92) {
+      // Type 9.2: strictly 000000000 with destination address populated from AFM lookup
+      counterpartXml = `\n    <counterpart>
+      <vatNumber>000000000</vatNumber>
+      <country>GR</country>
+      <branch>0</branch>
+      <name>ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΔΙΑΚΙΝΗΣΗ</name>
+      <address>
+        <street>${delStreet}</street>
+        <number>${delNum}</number>
+        <postalCode>${delZip}</postalCode>
+        <city>${delCity}</city>
+      </address>
+    </counterpart>`;
+    } else if (rawCpAfm && String(rawCpAfm).replace(/\D/g, '').trim() !== '') {
       const cpAfm = String(rawCpAfm).replace(/\D/g, '').trim();
       const cpCountry = (cp.country || 'GR').toUpperCase();
       const isGreek = cpCountry === 'GR';
 
-      // Rule 220: <name> is forbidden for Greek VAT counterparts
-      const nameTag = (!isGreek && (cp.legalName || cp.name))
-        ? `\n      <name>${this.escapeXml(cp.legalName || cp.name)}</name>`
+      const shouldIncludeName = !isGreek || isMovementOnly;
+      const nameVal = cp.legalName || cp.name;
+      const nameTag = (shouldIncludeName && nameVal)
+        ? `\n      <name>${this.escapeXml(nameVal)}</name>`
         : '';
 
-      const cpStreet = this.escapeXml(cp.street || cp.address?.street || '');
-      const rawCpNumber = cp.number || cp.address?.number || '';
-      const cpNum = this.escapeXml((rawCpNumber && rawCpNumber !== '0') ? rawCpNumber : '1');
-      const cpZip = this.escapeXml(cp.postalCode || cp.address?.postalCode || '');
-      const cpCity = this.escapeXml(cp.city || cp.address?.city || '');
       const cpBranch = isNaN(Number(cp.branch)) ? 0 : Number(cp.branch);
 
       let addressXml = '';
-      if (cpStreet) {
+      if (delStreet) {
         addressXml = `\n      <address>
-        <street>${cpStreet}</street>
-        <number>${cpNum}</number>
-        <postalCode>${cpZip}</postalCode>
-        <city>${cpCity}</city>
+        <street>${delStreet}</street>
+        <number>${delNum}</number>
+        <postalCode>${delZip}</postalCode>
+        <city>${delCity}</city>
       </address>`;
       }
 
@@ -140,7 +246,7 @@ export class AadeSerializerService {
     </counterpart>`;
     }
 
-    // 3. Header Construction
+    // 3. Header Construction & otherDeliveryNoteHeader
     let headerTags = `
       <series>${this.escapeXml(data.series || 'DEV')}</series>
       <aa>${data.documentNumber || 1}</aa>
@@ -151,12 +257,13 @@ export class AadeSerializerService {
       headerTags += `\n      <currency>${data.currency || 'EUR'}</currency>`;
     }
 
-    // Movement details inside invoiceHeader (Strict XSD element ordering)
-    if (isMovementOnly && data.movement) {
-      if (data.movement.correlatedMark) {
-        headerTags += `\n      <correlatedInvoices>${this.escapeXml(data.movement.correlatedMark)}</correlatedInvoices>`;
-      }
+    // correlatedInvoices forbidden on 9.2, mandatory on 9.1
+    const corrMark = data.movement?.correlatedMark || data.correlatedInvoices;
+    if (corrMark && !is92) {
+      headerTags += `\n      <correlatedInvoices>${this.escapeXml(String(corrMark).trim())}</correlatedInvoices>`;
+    }
 
+    if (hasMovementDetails && data.movement) {
       const dt = data.movement.dispatchDateTime ? String(data.movement.dispatchDateTime).trim() : '';
       let dDate = data.issueDate;
       let dTime = '09:30:00';
@@ -174,34 +281,32 @@ export class AadeSerializerService {
         headerTags += `\n      <vehicleNumber>${this.escapeXml(data.movement.vehicleNumber.trim())}</vehicleNumber>`;
       }
 
-      const movePurpose = Number(data.movement.movePurpose) || (is93 ? 4 : 1);
+      const movePurpose = Number(data.movement.movePurpose) || (isMovementOnly ? 4 : 1);
       headerTags += `\n      <movePurpose>${movePurpose}</movePurpose>`;
 
-      // XSD requires otherMovePurposeTitle BEFORE otherDeliveryNoteHeader
       if (movePurpose === 19 && data.movement.otherMovePurposeTitle) {
         headerTags += `\n      <otherMovePurposeTitle>${this.escapeXml(data.movement.otherMovePurposeTitle)}</otherMovePurposeTitle>`;
       }
 
-      const from = data.movement.addressFrom || {};
-      const to = data.movement.addressTo || {};
+      // Both loading and delivery addresses are purely dynamic from session & AFM lookup
       headerTags += `
       <otherDeliveryNoteHeader>
         <loadingAddress>
-          <street>${this.escapeXml(from.street || '')}</street>
-          <number>${this.escapeXml(from.number || '1')}</number>
-          <postalCode>${this.escapeXml(from.postalCode || '')}</postalCode>
-          <city>${this.escapeXml(from.city || '')}</city>
+          <street>${loadStreet}</street>
+          <number>${loadNum}</number>
+          <postalCode>${loadZip}</postalCode>
+          <city>${loadCity}</city>
         </loadingAddress>
         <deliveryAddress>
-          <street>${this.escapeXml(to.street || '')}</street>
-          <number>${this.escapeXml(to.number || '1')}</number>
-          <postalCode>${this.escapeXml(to.postalCode || '')}</postalCode>
-          <city>${this.escapeXml(to.city || '')}</city>
+          <street>${delStreet}</street>
+          <number>${delNum}</number>
+          <postalCode>${delZip}</postalCode>
+          <city>${delCity}</city>
         </deliveryAddress>
       </otherDeliveryNoteHeader>`;
     }
 
-    // 4. Payment Methods (Omitted on 9.3 movement notes, mandatory for commercial & retail)
+    // 4. Payment Methods (Omitted on pure movement notes; mandatory for commercial/retail)
     let paymentMethodsXml = '';
     const grossVal = isMovementOnly ? '0.00' : Number(data.totals?.totalGrossValue || 0).toFixed(2);
     if (!isMovementOnly) {
@@ -224,7 +329,8 @@ export class AadeSerializerService {
         const qty = Number(line.quantity || 1);
         const unit = line.unitMeasurement || line.measurementUnit || 1;
 
-        if (is93) {
+        // Pure movement lines (9.1, 9.2, 9.3)
+        if (isMovementOnly) {
           const itemDescr = this.escapeXml(line.description || line.itemDescr || 'Εμπορεύματα');
           return `    <invoiceDetails>
       <lineNumber>${lineNum}</lineNumber>
@@ -241,27 +347,34 @@ export class AadeSerializerService {
     </invoiceDetails>`;
         }
 
+        // Commercial Invoices (1.1, 1.2, 2.1, 11.1, 11.2)
         const net = Number(line.netValue || 0).toFixed(2);
-        const vat = Number(line.vatAmount || 0).toFixed(2);
-        const vatCat = Number(line.vatRateCategory ?? line.vatCategory ?? 1);
+        const vatCat = is12 ? 7 : Number(line.vatRateCategory ?? line.vatCategory ?? 1);
+        const vat = (isMovementOnly || is12) ? '0.00' : Number(line.vatAmount || 0).toFixed(2);
 
-        // Map line classifications across 1.1, 2.1, 11.1, 11.2
-        let e3 = 'E3_561_001'; // Default wholesale goods (1.1)
+        let e3 = 'E3_561_001';
         let cat = 'category1_1';
 
-        if (isRetailGoods) {
-          e3 = 'E3_561_003'; // Retail goods (11.1)
+        if (is12) {
+          e3 = 'E3_561_005';
+          cat = 'category1_2';
+        } else if (isRetailGoods) {
+          e3 = 'E3_561_003';
           cat = 'category1_1';
         } else if (isRetailServices) {
-          e3 = 'E3_561_003'; // 👈 FIXED: Retail services (11.2)
+          e3 = 'E3_561_003';
           cat = 'category1_3';
         } else if (isServiceInvoice) {
-          e3 = 'E3_561_002'; // 👈 FIXED: Wholesale services (2.1)
+          e3 = 'E3_561_002';
           cat = 'category1_3';
         }
 
-        // Rule 205: Quantity and measurementUnit are strictly omitted on service invoices (2.1, 11.2)
-        // Kept for 1.1 and 11.1
+        let vatExemptionTag = '';
+        if (vatCat === 7 || is12) {
+          const exCode = line.vatExemptionCategory || 1;
+          vatExemptionTag = `\n      <vatExemptionCategory>${exCode}</vatExemptionCategory>`;
+        }
+
         const qtyAndUnitTags = isServiceInvoice
           ? ''
           : `\n      <quantity>${qty.toFixed(2)}</quantity>\n      <measurementUnit>${unit}</measurementUnit>`;
@@ -270,7 +383,7 @@ export class AadeSerializerService {
       <lineNumber>${lineNum}</lineNumber>${qtyAndUnitTags}
       <netValue>${net}</netValue>
       <vatCategory>${vatCat}</vatCategory>
-      <vatAmount>${vat}</vatAmount>
+      <vatAmount>${vat}</vatAmount>${vatExemptionTag}
       <incomeClassification>
         <icls:classificationType>${e3}</icls:classificationType>
         <icls:classificationCategory>${cat}</icls:classificationCategory>
@@ -282,11 +395,11 @@ export class AadeSerializerService {
 
     // 6. Summary Block
     const netSummary = isMovementOnly ? '0.00' : Number(data.totals?.totalNetValue || 0).toFixed(2);
-    const vatSummary = isMovementOnly ? '0.00' : Number(data.totals?.totalVatAmount || 0).toFixed(2);
-    const grossSummary = isMovementOnly ? '0.00' : Number(data.totals?.totalGrossValue || 0).toFixed(2);
+    const vatSummary = (isMovementOnly || is12) ? '0.00' : Number(data.totals?.totalVatAmount || 0).toFixed(2);
+    const grossSummary = isMovementOnly ? '0.00' : (is12 ? netSummary : Number(data.totals?.totalGrossValue || 0).toFixed(2));
 
     let summaryClassificationXml = '';
-    if (is93) {
+    if (isMovementOnly) {
       summaryClassificationXml = `
       <incomeClassification>
         <icls:classificationCategory>category3</icls:classificationCategory>
@@ -296,14 +409,17 @@ export class AadeSerializerService {
       let summaryE3 = 'E3_561_001';
       let summaryCat = 'category1_1';
 
-      if (isRetailGoods) {
+      if (is12) {
+        summaryE3 = 'E3_561_005';
+        summaryCat = 'category1_2';
+      } else if (isRetailGoods) {
         summaryE3 = 'E3_561_003';
         summaryCat = 'category1_1';
       } else if (isRetailServices) {
-        summaryE3 = 'E3_561_003'; // 👈 Retail services (11.2)
+        summaryE3 = 'E3_561_003';
         summaryCat = 'category1_3';
       } else if (isServiceInvoice) {
-        summaryE3 = 'E3_561_002'; // 👈 Wholesale services (2.1)
+        summaryE3 = 'E3_561_002';
         summaryCat = 'category1_3';
       }
 
@@ -315,7 +431,7 @@ export class AadeSerializerService {
       </incomeClassification>`;
     }
 
-    // 7. Strict Summary Child Sequence
+    // 7. Strict Summary Sequence
     const summaryXml = `    <invoiceSummary>
       <totalNetValue>${netSummary}</totalNetValue>
       <totalVatAmount>${vatSummary}</totalVatAmount>

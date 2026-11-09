@@ -12,41 +12,45 @@ export const VAT_RATES_MAP: Record<VatRateCategory, number> = {
   8: 0,
 };
 
+export function roundToTwoDecimals(value: number): number {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
 /**
  * Validates Greek Tax Identification Numbers (Α.Φ.Μ.) via official Modulo-11 algorithm.
  * Correctly supports leading zeros (e.g., 067..., 07..., 09...).
  */
-export function isValidGreekAfm(afm: unknown): boolean {
-  if (afm === null || afm === undefined) return false;
+/**
+ * Validates a Greek VAT Number (Α.Φ.Μ.) using the official Modulo-11 algorithm.
+ * Rejects non-9-digit strings and non-numeric values.
+ * Allows '000000000' only when allowZeroVat is explicitly true (for Type 9.2 & Anonymous Retail).
+ */
+export function isValidGreekAfm(
+  afm: string | null | undefined,
+  allowZeroVat: boolean = false
+): boolean {
+  if (!afm) return false;
+  const clean = afm.replace(/\D/g, '').trim();
 
-  // 1. Force string conversion and strip any spaces or non-digit chars
-  let clean = String(afm).trim().replace(/\D/g, '');
-
-  // 2. Older 8-digit tax IDs: pad single leading zero
-  if (clean.length === 8) {
-    clean = '0' + clean;
-  }
-
-  // 3. Must be exactly 9 digits and cannot be all zeros
-  if (clean.length !== 9 || clean === '000000000') {
+  if (clean.length !== 9) {
     return false;
   }
 
-  // 4. Modulo-11 Algorithm
-  // Digits: d1 d2 d3 d4 d5 d6 d7 d8 (check digit: d9)
-  // Weights: 256, 128, 64, 32, 16, 8, 4, 2
-  const digits = clean.split('').map(d => parseInt(d, 10));
+  // Type 9.2 consolidated dispatch and anonymous retail permit 000000000
+  if (clean === '000000000') {
+    return allowZeroVat;
+  }
+
+  const digits = clean.split('').map(Number);
   const checkDigit = digits[8];
 
   let sum = 0;
   for (let i = 0; i < 8; i++) {
-    sum += digits[i] * (1 << (8 - i)); // equivalent to digits[i] * Math.pow(2, 8 - i)
+    sum += digits[i] * (1 << (8 - i));
   }
 
-  const remainder = sum % 11;
-  const computedCheckDigit = remainder % 10;
-
-  return computedCheckDigit === checkDigit;
+  const remainder = (sum % 11) % 10;
+  return remainder === checkDigit;
 }
 
 /**
