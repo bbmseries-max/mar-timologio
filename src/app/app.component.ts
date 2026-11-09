@@ -152,7 +152,7 @@ import * as Sentry from '@sentry/angular';
     }
 
     <a
-      routerLink="/invoices/archive"
+      routerLink="/invoices"
       routerLinkActive="text-white font-bold bg-white/10 border-white/20"
       class="flex-1 flex flex-col items-center justify-center py-1.5 px-2 rounded-lg text-slate-400 hover:text-white transition-all text-[11px] border border-transparent"
     >
