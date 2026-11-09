@@ -23,65 +23,109 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
       </div>
 
       <form [formGroup]="form" (ngSubmit)="onSave()" class="space-y-6">
-        <!-- Section 0: Subscription & License Status -->
-        <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div class="flex items-center gap-3.5">
-              <div class="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-lg shrink-0">
+       <!-- Section 0: Subscription & License Console (Maranth Executive) -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          
+          <!-- Top Obsidian Ribbon -->
+          <div class="bg-slate-950 px-5 sm:px-6 py-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-lg text-blue-400 shrink-0 shadow-inner">
                 🛡️
               </div>
               <div>
-                <div class="flex items-center gap-2">
-                  <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Συνδρομη Maranth Invoice Pro:
-                    <span class="font-mono text-indigo-600">{{ form.get('subscriptionTier')?.value }}</span>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Συνδρομή Συστήματος
                   </h3>
-                  @switch (form.get('subscriptionStatus')?.value) {
-                    @case ('ACTIVE') {
-                      <span class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        ● ΕΝΕΡΓΗ
-                      </span>
-                    }
-                    @case ('GRACE_PERIOD') {
-                      <span class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-amber-50 text-amber-700 border border-amber-200">
-                        ▲ ΧΑΡΙΣΤΙΚΗ ΠΕΡΙΟΔΟΣ
-                      </span>
-                    }
-                    @case ('READ_ONLY') {
-                      <span class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-rose-50 text-rose-700 border border-rose-200">
-                        ✕ ΜΟΝΟ ΑΝΑΓΝΩΣΗ
-                      </span>
-                    }
-                    @case ('SUSPENDED') {
-                      <span class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-red-100 text-red-800 border border-red-300">
-                        ✕ ΑΝΕΣΤΑΛΗ
-                      </span>
-                    }
-                    @default {
-                      <span class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-slate-100 text-slate-600 border border-slate-200">
-                        TRIAL
-                      </span>
-                    }
-                  }
+                  <span class="px-2 py-0.5 text-xs font-mono font-black rounded-md bg-white/10 text-white border border-white/20">
+                    {{ form.get('subscriptionTier')?.value || 'RETAIL_SHOP' }}
+                  </span>
                 </div>
-                <p class="text-[11px] text-slate-500 mt-1">
-                  @if (!form.get('validUntil')?.value || form.get('validUntil')?.value?.startsWith('2099') || form.get('validUntil')?.value?.startsWith('2999')) {
-                    <span class="inline-flex items-center font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                      ★ ΑΠΕΡΙΟΡΙΣΤΗ (LIFETIME)
-                    </span>
-                  } @else {
-                    <span>Ισχύει έως: <strong class="text-slate-700">{{ form.get('validUntil')?.value | date:'dd/MM/yyyy' }}</strong></span>
-                  }
-                  &bull; Έγγραφα Μήνα: <span class="font-mono font-bold text-slate-800">{{ form.get('currentMonthDocumentCount')?.value || 0 }}</span> / {{ form.get('maxMonthlyDocuments')?.value || '∞' }}
+                <p class="text-[11px] font-mono text-slate-400 mt-0.5">
+                  Tenant: <span class="text-slate-200 font-bold select-all">{{ form.get('tenantId')?.value || auth.currentTenantId() || 'tenant_minimarket' }}</span>
                 </p>
               </div>
             </div>
-            <div class="text-right">
-              <span class="text-[10px] uppercase font-mono px-2 py-1 bg-slate-100 rounded text-slate-600 border border-slate-200">
-                Tenant: {{ auth.currentTenantId() }}
-              </span>
+
+            <!-- License Status Pill -->
+            <div class="flex items-center sm:self-center">
+              @switch (form.get('subscriptionStatus')?.value) {
+                @case ('ACTIVE') {
+                  <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    ΕΝΕΡΓΗ
+                  </span>
+                }
+                @case ('GRACE_PERIOD') {
+                  <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                    ΧΑΡΙΣΤΙΚΗ ΠΕΡΙΟΔΟΣ
+                  </span>
+                }
+                @case ('READ_ONLY') {
+                  <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                    <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+                    ΜΟΝΟ ΑΝΑΓΝΩΣΗ
+                  </span>
+                }
+                @case ('SUSPENDED') {
+                  <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-rose-950 text-rose-300 border border-rose-800">
+                    <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                    ΑΝΕΣΤΑΛΗ
+                  </span>
+                }
+                @default {
+                  <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                    <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                    ΔΟΚΙΜΑΣΤΙΚΗ (TRIAL)
+                  </span>
+                }
+              }
             </div>
           </div>
+
+          <!-- Card Body: Quota & Validity -->
+          <div class="p-5 sm:p-6 bg-slate-50/50 space-y-4 text-xs">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              
+              <!-- Validity Period -->
+              <div class="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-1">
+                <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Διάρκεια Άδειας
+                </span>
+                <div>
+                  @if (!form.get('validUntil')?.value || form.get('validUntil')?.value?.startsWith('2099') || form.get('validUntil')?.value?.startsWith('2999')) {
+                    <span class="inline-flex items-center gap-1 font-black text-xs text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+                      ★ ΑΠΕΡΙΟΡΙΣΤΗ (LIFETIME)
+                    </span>
+                  } @else {
+                    <span class="font-mono text-sm font-bold text-slate-900">
+                      Ισχύει έως {{ form.get('validUntil')?.value | date:'dd/MM/yyyy' }}
+                    </span>
+                  }
+                </div>
+              </div>
+
+              <!-- Monthly Quota -->
+              <div class="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-1.5">
+                <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <span>Χρήση Μηνός</span>
+                  <span class="font-mono text-xs text-slate-900">
+                    {{ form.get('currentMonthDocumentCount')?.value || 0 }} / {{ form.get('maxMonthlyDocuments')?.value || '∞' }}
+                  </span>
+                </div>
+                <!-- Progress Line Indicator -->
+                <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
+  <div 
+    class="bg-blue-600 h-full rounded-full transition-all"
+    [style.width.%]="quotaUsagePercentage"
+  ></div>
+</div>
+              </div>
+
+            </div>
+          </div>
+
         </div>
 
         <!-- Section 1: Business Identity & Tax Details -->
@@ -337,4 +381,17 @@ export class SettingsComponent implements OnInit {
       this.isSaving.set(false);
     }
   }
+
+  // Inside SettingsComponent class:
+public get quotaUsagePercentage(): number {
+  const max = Number(this.form.get('maxMonthlyDocuments')?.value);
+  const current = Number(this.form.get('currentMonthDocumentCount')?.value || 0);
+
+  if (!max || isNaN(max) || max <= 0) {
+    return 5; // Default minimal bar for unlimited / zero
+  }
+
+  const pct = Math.round((current / max) * 100);
+  return Math.min(100, Math.max(0, pct));
+}
 }
