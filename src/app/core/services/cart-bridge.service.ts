@@ -107,9 +107,10 @@ export class CartBridgeService implements OnDestroy {
         const bytes = Uint8Array.from(binaryStr, c => c.charCodeAt(0));
         const decodedJson = new TextDecoder('utf-8').decode(bytes);
         const parsed = JSON.parse(decodedJson);
+        const handoverPayload = (parsed?.payload || parsed) as ExternalDocumentHandover;
 
-        console.log('[CartBridge] Successfully loaded payload via URL parameter:', parsed);
-        this.forwardHandover(parsed);
+        console.log('[CartBridge] Successfully loaded payload via URL parameter:', handoverPayload);
+        this.forwardHandover(handoverPayload);
 
         window.history.replaceState({}, document.title, window.location.pathname);
       }

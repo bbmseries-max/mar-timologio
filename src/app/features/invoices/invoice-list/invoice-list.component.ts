@@ -48,6 +48,15 @@ public onEscape(): void {
   public readonly selectedInvoiceForPrint = signal<any | null>(null);
   public readonly isCancelling = signal<Record<string, boolean>>({});
 
+  public isCancellingInvoice(id: unknown): boolean {
+    if (id == null) return false;
+    return Boolean(this.isCancelling()[String(id)]);
+  }
+
+  public isInvoiceCancelled(inv: LocalInvoiceRecord): boolean {
+    return Boolean(inv.cancelledAt) || inv.transmissionStatus === ('CANCELLED' as any);
+  }
+
   // Computed: Distinct available series (e.g. ['ALL', 'DEV', 'A', 'ΤΠΥ'])
   public readonly availableSeries = computed(() => {
     const set = new Set<string>();
@@ -321,4 +330,6 @@ this.selectedInvoiceForPrint.set(printableData);
   public closePrintModal(): void {
     this.selectedInvoiceForPrint.set(null);
   }
+
+  
 }

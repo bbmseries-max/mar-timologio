@@ -72,12 +72,19 @@ export class AuthTenantService {
   public readonly currentTenantProfile = this.activeTenant;
 
   public readonly isAuthenticated = computed(() => this.currentUser() !== null);
-  public readonly currentTenantId = computed(() => this.activeTenant()?.id || 'tenant_minimarket');
+  public readonly currentTenantId = computed(() => this.activeTenant()?.id || '');
 
   public readonly currentTenantAfm = computed(() => {
     const tenant = this.activeTenant();
-    return tenant?.fiscalIdentity?.afm || tenant?.afm || '067424104';
+    return tenant?.fiscalIdentity?.afm || tenant?.afm || '';
   });
+
+  public readonly isTenantConfigured = computed(() => {
+  const tenant = this.activeTenant();
+  const afm = (tenant?.fiscalIdentity?.afm || tenant?.afm || '').replace(/\D/g, '').trim();
+  if (afm.length === 9 && afm !== '000000000') return true;
+  return this.subscription()?.status === 'ACTIVE';
+});
 
   public readonly isGracePeriod = computed(() => {
     return this.subscription()?.status === 'GRACE_PERIOD';
@@ -115,106 +122,159 @@ export class AuthTenantService {
   /**
    * Initializes tenant license and settings on app boot.
    */
-  public async syncTenantSubscriptionOnBoot(): Promise<void> {
-    const tenantId = this.currentTenantId();
-    if (!tenantId) return;
+  public async syncTenantSubscriptionOnBoot(forceAfm?: string): Promise<void> {
+  const tenantId = this.currentTenantId();
+  if (!tenantId && !forceAfm) return;
 
-    try {
-      const savedSettings = await this.db.getSettingsForTenant(tenantId);
+  try {
+    const savedSettings = tenantId ? await this.db.getSettingsForTenant(tenantId) : null;
 
-      // If activeTenant is not populated, seed it from Dexie settings
-      if (!this.activeTenant() && savedSettings) {
-        this.seedTenantFromSettings(savedSettings);
-      }
+    // Seed activeTenant from settings if needed
+    if (!this.activeTenant() && savedSettings) {
+      this.seedTenantFromSettings(savedSettings);
+    }
 
-      const afm = this.currentTenantAfm() || savedSettings?.afm;
-      if (!afm) return;
+    const rawAfm = forceAfm || this.currentTenantAfm() || savedSettings?.afm;
+    if (!rawAfm) return;
 
-      const cleanAfm = afm.replace(/\D/g, '').trim();
-      const workerUrl = 'https://gsis-lookup.bbmseries.workers.dev/check-subscription';
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const cleanAfm = rawAfm.replace(/\D/g, '').trim();
+    if (cleanAfm.length !== 9 || cleanAfm === '000000000') return;
 
-      const response = await fetch(`${workerUrl}?afm=${encodeURIComponent(cleanAfm)}`, {
-        signal: controller.signal,
+    // Read credentials dynamically from user's saved settings
+    const userId = savedSettings?.aadeUserId?.trim() || '';
+    const subKey = savedSettings?.aadeSubscriptionKey?.trim() || '';
+
+    // If settings have no API keys yet, fall back immediately to local trial
+    if (!userId || !subKey) {
+      this.subscription.set({
+        status: 'ACTIVE',
+        planName: 'FREE_TRIAL',
+        validUntil: new Date(Date.now() + 14 * 86400000).toISOString(),
+        maxMonthlyDocuments: 100,
       });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) return;
-
-      const data = await response.json();
-      const updatedSub: TenantSubscription = {
-        status: data.status as SubscriptionStatus,
-        planName: data.tier || 'RETAIL_SHOP',
-        validUntil: data.validUntil || '2099-12-31T23:59:59Z',
-        maxMonthlyDocuments: data.monthlyLimit || 999999,
-      };
-
-      this.subscription.set(updatedSub);
-    } catch (err) {
-      console.warn('[AuthTenantService] Subscription sync skipped (offline or unreachable):', err);
+      return;
     }
-  }
 
-  private async hydrateSessionFromStorage(): Promise<void> {
-    try {
-      const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
-      if (storedUser) {
-        this.currentUser.set(JSON.parse(storedUser));
-      }
+    const workerUrl = new URL('https://gsis-lookup.bbmseries.workers.dev/check-subscription');
+    workerUrl.searchParams.set('afm', cleanAfm);
+    workerUrl.searchParams.set('userId', userId);
+    workerUrl.searchParams.set('subscriptionKey', subKey);
 
-      const storedTenant = localStorage.getItem(STORAGE_KEYS.TENANT);
-      if (storedTenant) {
-        const tenant: TenantProfile = JSON.parse(storedTenant);
-        this.activeTenant.set(tenant);
-        if (tenant.subscription) {
-          this.subscription.set(tenant.subscription);
-        }
-      } else {
-        // Fallback to IndexedDB settings table if localStorage is empty
-        const s = await this.db.getSettings('tenant_minimarket');
-        if (s) {
-          this.seedTenantFromSettings(s);
-        }
-      }
-    } catch (err) {
-      console.warn('[AuthTenantService] Failed to hydrate stored session:', err);
-      this.clearLocalSession(false);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    const response = await fetch(workerUrl.toString(), {
+      headers: {
+        'aade-user-id': userId,
+        'ocp-apim-subscription-key': subKey,
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`Worker HTTP status ${response.status}`);
     }
-  }
 
-  private seedTenantFromSettings(s: any): void {
-    const profile: TenantProfile = {
-      id: s.id || s.tenantId || 'tenant_minimarket',
-      name: s.legalName || s.companyName || 'MARANTH ENTERPRISE',
-      afm: s.afm || '067424104',
-      doy: s.doy || 'ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ',
-      fiscalIdentity: {
-        afm: s.afm || '067424104',
-        doy: s.doy || 'ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ',
-        legalName: s.legalName || 'MARANTH MON IKE',
-        tradeName: s.companyName || 'MARANTH ENTERPRISE',
-        address: {
-          street: s.street || 'ΒΑΡΔΟΥΝΙΩΤΗ',
-          number: s.number || '11',
-          postalCode: s.postalCode || '11522',
-          city: s.city || 'ΑΘΗΝΑ',
-        },
-      },
-      subscription: {
-        status: (s.subscriptionStatus as SubscriptionStatus) || 'ACTIVE',
-        planName: s.subscriptionTier || 'RETAIL_SHOP',
-        validUntil: s.validUntil || '2099-12-31T23:59:59Z',
-        maxMonthlyDocuments: s.maxMonthlyDocuments || 1000,
-      },
+    const data = await response.json();
+
+    // Verify worker reported success, not a validation failure
+    if (data.success === false) {
+      console.warn('[AuthTenantService] License server rejected credentials:', data.error);
+      this.subscription.set({
+        status: 'ACTIVE',
+        planName: 'FREE_TRIAL',
+        validUntil: new Date(Date.now() + 14 * 86400000).toISOString(),
+        maxMonthlyDocuments: 100,
+      });
+      return;
+    }
+
+    // Set confirmed subscription
+    const updatedSub: TenantSubscription = {
+      status: (data.status as SubscriptionStatus) || 'ACTIVE',
+      planName: data.tier || 'RETAIL_SHOP',
+      validUntil: data.validUntil || '2099-12-31T23:59:59Z',
+      maxMonthlyDocuments: data.monthlyLimit || 999999,
     };
 
-    this.activeTenant.set(profile);
-    if (profile.subscription) {
-      this.subscription.set(profile.subscription);
+    this.subscription.set(updatedSub);
+  } catch (err) {
+    console.warn('[AuthTenantService] Subscription sync fallback:', err);
+    if (!this.subscription()) {
+      this.subscription.set({
+        status: 'ACTIVE',
+        planName: 'OFFLINE_TRIAL',
+        validUntil: new Date(Date.now() + 7 * 86400000).toISOString(),
+        maxMonthlyDocuments: 100,
+      });
     }
-    localStorage.setItem(STORAGE_KEYS.TENANT, JSON.stringify(profile));
   }
+}
+
+  private async hydrateSessionFromStorage(): Promise<void> {
+  try {
+    const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
+    if (storedUser) {
+      this.currentUser.set(JSON.parse(storedUser));
+    }
+
+    const storedTenant = localStorage.getItem(STORAGE_KEYS.TENANT);
+    if (storedTenant) {
+      const tenant: TenantProfile = JSON.parse(storedTenant);
+      this.activeTenant.set(tenant);
+      if (tenant.subscription) {
+        this.subscription.set(tenant.subscription);
+      }
+    } else {
+      // Look up ANY tenant currently saved in Dexie (not just hardcoded 'tenant_minimarket')
+      const allSettings = await this.db.settings.toArray();
+      if (allSettings && allSettings.length > 0) {
+        this.seedTenantFromSettings(allSettings[0]);
+      }
+    }
+  } catch (err) {
+    console.warn('[AuthTenantService] Failed to hydrate stored session:', err);
+    this.clearLocalSession(false);
+  }
+}
+
+  public seedTenantFromSettings(s: any): void {
+  if (!s) return;
+  const rawAfm = (s.afm || '').replace(/\D/g, '').trim();
+  const tenantId = s.id || s.tenantId || (rawAfm ? `tenant_${rawAfm}` : 'tenant_default');
+
+  const profile: TenantProfile = {
+    id: tenantId,
+    name: s.legalName || s.companyName || 'Κατάστημα',
+    afm: rawAfm,
+    doy: s.doy || '',
+    fiscalIdentity: {
+      afm: rawAfm,
+      doy: s.doy || '',
+      legalName: s.legalName || '',
+      tradeName: s.companyName || s.legalName || '',
+      address: {
+        street: s.street || '',
+        number: s.number || '',
+        postalCode: s.postalCode || '',
+        city: s.city || '',
+      },
+    },
+    subscription: {
+      status: (s.subscriptionStatus as SubscriptionStatus) || 'ACTIVE',
+      planName: s.subscriptionTier || 'RETAIL_SHOP',
+      validUntil: s.validUntil || '2099-12-31T23:59:59Z',
+      maxMonthlyDocuments: s.maxMonthlyDocuments || 999999,
+    },
+  };
+
+  this.activeTenant.set(profile);
+  if (profile.subscription) {
+    this.subscription.set(profile.subscription);
+  }
+  localStorage.setItem(STORAGE_KEYS.TENANT, JSON.stringify(profile));
+}
 
   private initCrossTabAuthSync(): void {
     if (!this.authChannel) return;

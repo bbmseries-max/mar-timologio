@@ -32,8 +32,8 @@ export const routes: Routes = [
       {
         path: 'invoices',
         loadComponent: () =>
-          import('./features/invoices/invoice-list/invoice-list.component').then(
-            (m) => m.InvoiceListComponent
+          import('./features/invoices/invoice-archive/invoice-archive.component').then(
+            (m) => m.InvoiceArchiveComponent
           ),
         title: 'Αρχείο Παραστατικών — Maranth Hub',
       },
@@ -47,11 +47,9 @@ export const routes: Routes = [
       },
       {
         path: 'archive',
-        loadComponent: () =>
-          import('./features/invoices/invoice-archive/invoice-archive.component').then(
-            (m) => m.InvoiceArchiveComponent
-          ),
-        },
+        redirectTo: 'invoices',
+        pathMatch: 'full',
+      },
       {
         path: 'settings',
         loadComponent: () =>

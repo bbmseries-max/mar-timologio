@@ -67,7 +67,7 @@ export const INVOICE_TYPE_GUIDES: Record<string, InvoiceTypeGuide> = {
     counterpartRule: 'Α.Φ.Μ. παραλήπτη/προμηθευτή.',
     pricingRule: 'Αξίες 0.00€, Φ.Π.Α. Κατηγορία 8, υποχρεωτική περιγραφή είδους (<itemDescr>).',
     transportRule: 'Σκοπός διακίνησης (1 = Πώληση, 4 = Επιστροφή, 6 = Ενδοδιακίνηση), πινακίδα οχήματος, διευθύνσεις.',
-    exampleScenario: 'Επιστροφή εμπορευμάτων στον προμηθευτή από το basket app (POS Return).',
+    exampleScenario: 'Επιστροφή εμπορευμάτων στον προμηθευτή από το basket app (POS Return). Προσοχή: Extra feature ή με CSV αρχείο',
   },
   '9.2': {
     code: '9.2',

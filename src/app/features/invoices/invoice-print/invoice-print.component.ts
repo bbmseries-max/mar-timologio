@@ -1,4 +1,4 @@
-import { Component, ViewChild, ElementRef, inject, input, signal } from '@angular/core';
+import { Component, output, ViewChild, ElementRef, inject, input, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { InvoicePrintEngineService } from '@core/services/invoice-print-engine.service';
 
@@ -106,9 +106,16 @@ export class InvoicePrintComponent {
   private readonly elRef = inject(ElementRef);
 
   readonly invoice = input<any>(null);
+  public readonly close = output<void>();
 
   readonly activeMode = signal<'a4' | 'thermal80'>('a4');
   readonly copied = signal<boolean>(false);
+
+  public async printDocument(): Promise<void> {
+    const el = this.printContainerRef?.nativeElement;
+    if (!el) return;
+    await this.printEngine.printElement(el, this.activeMode());
+  }
 
   public triggerBrowserPrint(event?: Event): void {
     if (event) {
@@ -179,6 +186,7 @@ export class InvoicePrintComponent {
       case '3': return 'Έκθεση';
       case '4': return 'Επιστροφή';
       case '5': return 'Επεξεργασία';
+      case '8': return 'Διακίνηση προς Διάθεση / Ενδοδιακίνηση';
       default: return 'Διακίνηση';
     }
   }

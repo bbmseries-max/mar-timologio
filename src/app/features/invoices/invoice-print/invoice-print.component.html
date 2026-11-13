@@ -1,7 +1,8 @@
 <!-- src/app/features/invoices/invoice-print/invoice-print.component.html -->
 
-<div class="no-print flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
-  <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+<div class="no-print flex flex-wrap items-center justify-between gap-3 p-4 mb-4 border-b border-slate-200 bg-slate-50/80 rounded-t-2xl">
+  <!-- Format Toggle (A4 / 80mm Thermal) -->
+  <div class="flex items-center gap-1 bg-slate-200/70 p-1 rounded-lg">
     <button
       type="button"
       (click)="activeMode.set('a4')"
@@ -10,7 +11,7 @@
       [class.font-bold]="activeMode() === 'a4'"
       class="px-3 py-1.5 text-xs rounded-md text-slate-700 transition-all cursor-pointer"
     >
-      Έγγραφο A4
+      📄 Έγγραφο A4
     </button>
     <button
       type="button"
@@ -20,20 +21,39 @@
       [class.font-bold]="activeMode() === 'thermal80'"
       class="px-3 py-1.5 text-xs rounded-md text-slate-700 transition-all cursor-pointer"
     >
-      Απόδειξη 80mm
+      🧾 Απόδειξη 80mm
     </button>
   </div>
 
+  <!-- Print, Optional XML Copy & Close Actions -->
   <div class="flex items-center gap-2">
     @if (invoice().xmlPayload) {
       <button
         type="button"
         (click)="copyXml()"
-        class="px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 rounded-md bg-white hover:bg-slate-50 cursor-pointer"
+        class="px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 cursor-pointer transition"
       >
-        {{ copied() ? 'Αντιγράφηκε!' : 'Αντιγραφή XML' }}
+        {{ copied() ? '✓ Αντιγράφηκε!' : '📋 Αντιγραφή XML' }}
       </button>
     }
+
+    <button
+      type="button"
+      (click)="printDocument()"
+      class="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition cursor-pointer flex items-center gap-1.5"
+    >
+      <span>🖨️</span>
+      <span>Εκτύπωση</span>
+    </button>
+
+    <button
+      type="button"
+      (click)="close.emit()"
+      title="Κλείσιμο"
+      class="px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition cursor-pointer"
+    >
+      ✕
+    </button>
   </div>
 </div>
 

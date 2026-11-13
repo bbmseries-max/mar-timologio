@@ -14,67 +14,126 @@ export interface LocalCustomerRecord extends Customer {
   updatedAt: string;
 }
 
+export interface DocumentSequenceRecord {
+  id: string; // e.g., `${tenantId}_${series}_${invoiceType}`
+  tenantId: string;
+  series: string;
+  invoiceType: string;
+  lastNumber: number;
+  updatedAt: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class LocalDbService extends Dexie {
   public invoices!: Table<LocalInvoiceRecord, string>;
   public products!: Table<Product, string>;
   public settings!: Table<TenantSettingsRecord, string>;
   public customers!: Table<LocalCustomerRecord, string>;
+  public sequences!: Table<DocumentSequenceRecord, string>;
 
   constructor() {
-    super('MaranthHubMultiTenantDb');
+    super('MaranthHubDb_v2');
 
-    // Retain historical upgrade paths
-    this.version(1).stores({
-      settings: 'tenantId, afm, fiscalEnvironment',
-      invoices: 'id, tenantId, mark, transmissionStatus, issueDate',
-      products: 'id, tenantId, name, barcode',
-    });
-
+    // Version 2 schema: indexes transmissionStatus, mark, and sequences
     this.version(2).stores({
-      invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, updatedAt, createdAt',
-      products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
-      settings: 'id',
-      customers: 'id, tenantId, afm, legalName, phone, updatedAt',
-    });
-
-    this.version(3).stores({
-      invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, updatedAt, createdAt',
-      products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
+      invoices: 'id, tenantId, invoiceType, mark, transmissionStatus, createdAt, updatedAt',
       settings: 'id, tenantId',
-      customers: 'id, tenantId, afm, legalName, phone, updatedAt',
-    });
-
-    this.version(4).stores({
-      invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, mark, uid, updatedAt, createdAt',
-      products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
-      settings: 'id, tenantId',
-      customers: 'id, tenantId, afm, legalName, phone, updatedAt',
-    });
-
-    // Match the existing browser storage schema (v40)
-    this.version(40).stores({
-      invoices: 'id, tenantId, series, documentNumber, issueDate, customerAfm, transmissionStatus, mark, uid, updatedAt, createdAt',
-      products: 'id, tenantId, barcode, *altBarcodes, name, isPinned',
-      settings: 'id, tenantId',
-      customers: 'id, tenantId, afm, legalName, phone, updatedAt',
+      customers: 'id, [tenantId+afm], tenantId, afm',
+      products: 'id, tenantId, barcode, name',
+      sequences: 'id, [tenantId+series+invoiceType]',
     });
   }
 
+  // =========================================================================
+  // Invoices & Transmission
+  // =========================================================================
+
   public async getAllInvoices(tenantId?: string): Promise<LocalInvoiceRecord[]> {
+    let records: LocalInvoiceRecord[];
     if (tenantId) {
-      return this.invoices
-        .where('tenantId')
-        .equals(tenantId)
-        .reverse()
-        .sortBy('createdAt');
+      records = await this.invoices.where('tenantId').equals(tenantId).toArray();
+    } else {
+      records = await this.invoices.toArray();
     }
-    return this.invoices.toCollection().reverse().sortBy('createdAt');
+
+    // Reliable in-memory descending sort (newest first)
+    return records.sort((a, b) => {
+      const timeA = typeof a.createdAt === 'number' ? a.createdAt : new Date(a.createdAt || a.issueDate).getTime() || 0;
+      const timeB = typeof b.createdAt === 'number' ? b.createdAt : new Date(b.createdAt || b.issueDate).getTime() || 0;
+      return timeB - timeA;
+    });
+  }
+
+  public async getInvoiceById(id: string | number): Promise<LocalInvoiceRecord | undefined> {
+    const key = String(id);
+    let record = await this.invoices.get(key);
+    if (!record && typeof id === 'number') {
+      record = await this.invoices.get(id as any);
+    }
+    return record;
+  }
+
+  public async updateInvoice(id: string | number, changes: Partial<LocalInvoiceRecord>): Promise<number> {
+    const key = String(id);
+    const count = await this.invoices.update(key, { ...changes, updatedAt: Date.now() });
+    if (count === 0 && typeof id === 'number') {
+      return await this.invoices.update(id as any, { ...changes, updatedAt: Date.now() });
+    }
+    return count;
   }
 
   /**
-   * Retrieves highest documentNumber used for given series and tenant, returning highest + 1.
+   * Resiliently locks in official AADE signature details.
+   * If lookup by primary key fails, it recovers by series + documentNumber matching.
    */
+  public async markInvoiceAsTransmitted(
+    id: string | number,
+    aadeData: { mark: string; uid: string; qrUrl?: string },
+    fallbackMeta?: { tenantId?: string; series?: string; documentNumber?: number | string }
+  ): Promise<boolean> {
+    const now = Date.now();
+    const isoDate = new Date().toISOString();
+
+    const patch: any = {
+      mark: String(aadeData.mark).trim(),
+      uid: String(aadeData.uid).trim(),
+      qrUrl: aadeData.qrUrl || '',
+      transmissionStatus: 'TRANSMITTED',
+      transmittedAt: isoDate,
+      updatedAt: now,
+    };
+
+    // 1. Try standard primary key update
+    let updatedCount = await this.updateInvoice(id, patch);
+
+    // 2. Fallback: Search by series & documentNumber if primary key update affected 0 rows
+    if (updatedCount === 0 && fallbackMeta?.series && fallbackMeta?.documentNumber) {
+      const match = await this.invoices
+        .filter((inv) => {
+          const sameSeries = (inv.series || '').trim().toUpperCase() === String(fallbackMeta.series).trim().toUpperCase();
+          const sameDoc = Number(inv.documentNumber) === Number(fallbackMeta.documentNumber);
+          const sameTenant = fallbackMeta.tenantId ? inv.tenantId === fallbackMeta.tenantId : true;
+          return sameSeries && sameDoc && sameTenant;
+        })
+        .first();
+
+      if (match?.id) {
+        updatedCount = await this.invoices.update(match.id, patch);
+      }
+    }
+
+    return updatedCount > 0;
+  }
+
+  public async markInvoiceAsCancelled(invoiceId: string | number, cancellationMark: string): Promise<void> {
+    await this.updateInvoice(invoiceId, {
+      transmissionStatus: 'CANCELLED',
+      cancellationMark,
+      cancelledAt: new Date().toISOString(),
+      updatedAt: Date.now(),
+    });
+  }
+
   public async getNextDocumentNumber(tenantId: string, series: string): Promise<number> {
     const normalizedSeries = (series || '').trim().toUpperCase();
 
@@ -100,74 +159,59 @@ export class LocalDbService extends Dexie {
     return maxNumber + 1;
   }
 
-  public async updateInvoice(id: string, changes: Partial<LocalInvoiceRecord>): Promise<number> {
-    return await this.invoices.update(id, changes);
+  public async deleteInvoice(id: string | number): Promise<void> {
+    await this.invoices.delete(String(id));
   }
 
-  // --- Products Catalog ---
+  // =========================================================================
+  // Drafts Handling
+  // =========================================================================
 
-  public async bulkSaveProducts(products: Product[]): Promise<void> {
-    await this.products.bulkPut(products);
+  public async getLatestDraftForTenant(tenantId: string): Promise<LocalInvoiceRecord | undefined> {
+    const drafts = await this.invoices
+      .where('tenantId')
+      .equals(tenantId)
+    .filter((inv) => inv.transmissionStatus === 'DRAFT' || (!inv.mark && inv.transmissionStatus !== 'TRANSMITTED'))      .toArray();
+
+    if (!drafts.length) return undefined;
+
+    // Correct newest-first descending sort
+    drafts.sort((a, b) => {
+      const tA = typeof a.updatedAt === 'number' ? a.updatedAt : new Date(a.updatedAt || 0).getTime() || 0;
+      const tB = typeof b.updatedAt === 'number' ? b.updatedAt : new Date(b.updatedAt || 0).getTime() || 0;
+      return tB - tA;
+    });
+
+    return drafts[0];
   }
 
-  // --- Settings & AADE Credentials ---
+  public async saveDraft(record: LocalInvoiceRecord): Promise<string> {
+    if (!record.id) {
+      record.id = crypto.randomUUID();
+    }
+    record.updatedAt = Date.now();
+    await this.invoices.put(record);
+    return String(record.id);
+  }
+
+  // =========================================================================
+  // Tenant Settings & AADE Profile
+  // =========================================================================
 
   public async getSettingsForTenant(tenantId: string): Promise<TenantSettingsRecord | undefined> {
     return this.getSettings(tenantId);
   }
 
   public async getSettings(tenantId: string): Promise<TenantSettingsRecord | undefined> {
-    // 1. Try by primary key 'id'
     let s = await this.settings.get(tenantId);
-    // 2. Try by indexed 'tenantId'
     if (!s) {
       s = await this.settings.where('tenantId').equals(tenantId).first();
     }
-    // 3. Fallback to first available record
     if (!s) {
       const all = await this.settings.toArray();
       if (all.length > 0) s = all[0];
     }
     return s;
-  }
-
-  public async getInvoiceById(id: string): Promise<LocalInvoiceRecord | undefined> {
-    return await this.invoices.get(id);
-  }
-
-  public async saveSettings(record: TenantSettingsRecord): Promise<string> {
-    return this.settings.put(record);
-  }
-
-  // --- Customers Directory & Local Cache ---
-
-  public async getCustomersForTenant(tenantId: string): Promise<LocalCustomerRecord[]> {
-    return this.customers.where('tenantId').equals(tenantId).reverse().sortBy('updatedAt');
-  }
-
-  public async searchCustomersForTenant(tenantId: string, query: string): Promise<LocalCustomerRecord[]> {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-
-    return this.customers
-      .where('tenantId')
-      .equals(tenantId)
-      .filter((c) => {
-        const matchAfm = c.afm ? c.afm.includes(q) : false;
-        const matchName = c.legalName ? c.legalName.toLowerCase().includes(q) : false;
-        const matchPhone = c.phone ? c.phone.includes(q) : false;
-        return matchAfm || matchName || matchPhone;
-      })
-      .limit(8)
-      .toArray();
-  }
-
-  public async getCustomerByAfm(tenantId: string, afm: string): Promise<LocalCustomerRecord | undefined> {
-    return this.customers
-      .where('tenantId')
-      .equals(tenantId)
-      .filter((c) => c.afm === afm.trim())
-      .first();
   }
 
   public async saveSettingsForTenant(
@@ -210,37 +254,60 @@ export class LocalDbService extends Dexie {
     return tenantId;
   }
 
+  // =========================================================================
+  // Customers Directory
+  // =========================================================================
+
+  public async getCustomersForTenant(tenantId: string): Promise<LocalCustomerRecord[]> {
+    const list = await this.customers.where('tenantId').equals(tenantId).toArray();
+    return list.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+  }
+
+  public async searchCustomersForTenant(tenantId: string, query: string): Promise<LocalCustomerRecord[]> {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+
+    return this.customers
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((c) => {
+        const matchAfm = c.afm ? c.afm.includes(q) : false;
+        const matchName = c.legalName ? c.legalName.toLowerCase().includes(q) : false;
+        const matchPhone = c.phone ? c.phone.includes(q) : false;
+        return matchAfm || matchName || matchPhone;
+      })
+      .limit(8)
+      .toArray();
+  }
+
+  public async getCustomerByAfm(tenantId: string, afm: string): Promise<LocalCustomerRecord | undefined> {
+    return this.customers
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((c) => c.afm === afm.trim())
+      .first();
+  }
+
   public async saveCustomer(record: LocalCustomerRecord): Promise<string> {
+    if (!record.id) {
+      record.id = crypto.randomUUID();
+    }
+    record.updatedAt = new Date().toISOString();
     await this.customers.put(record);
-    return record.id != null ? String(record.id) : '';
+    return String(record.id);
   }
 
   public async bulkSaveCustomers(records: LocalCustomerRecord[]): Promise<void> {
     await this.customers.bulkPut(records);
   }
 
-  // --- Draft Invoices ---
+  // =========================================================================
+  // Products Catalog
+  // =========================================================================
 
-  public async getLatestDraftForTenant(tenantId: string): Promise<LocalInvoiceRecord | undefined> {
-    return this.invoices
-      .where('tenantId')
-      .equals(tenantId)
-      .filter((inv) => inv.transmissionStatus === 'DRAFT')
-      .reverse()
-      .sortBy('updatedAt')
-      .then((records) => records[0]);
+  public async bulkSaveProducts(products: Product[]): Promise<void> {
+    await this.products.bulkPut(products);
   }
-
-  public async saveDraft(record: LocalInvoiceRecord): Promise<string> {
-    await this.invoices.put(record);
-    return record.id != null ? String(record.id) : '';
-  }
-
-  public async deleteInvoice(id: string): Promise<void> {
-    await this.invoices.delete(id);
-  }
-
-  // --- Products Catalog ---
 
   public async searchProductsForTenant(tenantId: string, query: string): Promise<Product[]> {
     const q = query.trim().toLowerCase();
@@ -258,31 +325,9 @@ export class LocalDbService extends Dexie {
       .toArray();
   }
 
-  public async markInvoiceAsCancelled(
-    invoiceId: string,
-    cancellationMark: string
-  ): Promise<void> {
-    await this.invoices.update(invoiceId, {
-      transmissionStatus: 'CANCELLED',
-      cancellationMark,
-      cancelledAt: new Date().toISOString(),
-      updatedAt: Date.now(),
-    });
-  }
-
-  public async markInvoiceAsTransmitted(
-    id: string,
-    aadeData: { mark: string; uid: string; qrUrl?: string }
-  ): Promise<void> {
-    await this.invoices.update(id, {
-      mark: aadeData.mark,
-      uid: aadeData.uid,
-      qrUrl: aadeData.qrUrl,
-      transmissionStatus: 'TRANSMITTED',
-      transmittedAt: new Date().toISOString(),
-      updatedAt: Date.now(),
-    } as Partial<LocalInvoiceRecord>);
-  }
+  // =========================================================================
+  // Maintenance & Purging
+  // =========================================================================
 
   public async purgeDraftAndFailedInvoices(
     tenantId: string,
@@ -294,20 +339,19 @@ export class LocalDbService extends Dexie {
       .where('tenantId')
       .equals(tenantId)
       .filter((inv: LocalInvoiceRecord) => {
-        if (inv.mark && String(inv.mark).trim().length > 0) {
-          return false;
-        }
+        if (inv.mark && String(inv.mark).trim().length > 0) return false;
 
         const isCandidate =
-          inv.transmissionStatus === 'DRAFT' || inv.transmissionStatus === 'FAILED';
+          inv.transmissionStatus === 'DRAFT' ||
+          inv.transmissionStatus === 'FAILED' ;
         if (!isCandidate) return false;
 
         if (options?.seriesFilter && options.seriesFilter.length > 0) {
           const normalizedSeries = (inv.series || '').trim().toUpperCase();
-          const matchesSeries = options.seriesFilter
+          const matches = options.seriesFilter
             .map((s) => s.trim().toUpperCase())
             .includes(normalizedSeries);
-          if (!matchesSeries) return false;
+          if (!matches) return false;
         }
 
         if (options?.olderThanDays && options.olderThanDays > 0) {

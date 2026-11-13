@@ -1,0 +1,348 @@
+<div class="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+  <!-- Created Document Alert Banner -->
+  @if (highlightedId()) {
+    <div class="bg-emerald-50 border border-emerald-300 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+          ✓
+        </div>
+        <div>
+          <p class="text-xs font-bold text-emerald-900">Το παραστατικό εκδόθηκε και διαβιβάστηκε επιτυχώς!</p>
+          <p class="text-[11px] text-emerald-700">Προβάλλεται η νέα εγγραφή με επισήμανση. Μπορείτε να την εκτυπώσετε απευθείας.</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        (click)="clearHighlight()"
+        class="text-xs px-3 py-1.5 bg-white border border-emerald-300 hover:bg-emerald-100 text-emerald-800 rounded-lg font-semibold transition cursor-pointer"
+      >
+        Προβολή Όλων των Εγγραφών
+      </button>
+    </div>
+  }
+
+  <!-- Header & Top Summary -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-5 gap-4">
+    <div>
+      <div class="flex items-center gap-3">
+        <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Αρχείο Παραστατικών</h1>
+        <span class="text-xs px-2.5 py-0.5 rounded-full font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+          {{ filteredInvoices().length }} εγγραφές
+        </span>
+      </div>
+      <p class="text-xs text-slate-500 mt-1">Ιστορικό εκδόσεων myDATA, επανεκτυπώσεις (A4/80mm) και κατάσταση διαβίβασης</p>
+    </div>
+
+    <div class="flex items-center gap-2.5">
+      <button
+        type="button"
+        (click)="loadInvoices()"
+        class="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl shadow-2xs transition active:scale-98 cursor-pointer flex items-center gap-1.5"
+      >
+        <span>🔄</span>
+        <span>Ανανέωση</span>
+      </button>
+
+      <a
+        routerLink="/invoices/new"
+        class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm shadow-indigo-500/20 transition active:scale-98 cursor-pointer flex items-center gap-1.5"
+      >
+        <span>⚡</span>
+        <span>Νέο Παραστατικό</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Financial Metrics Tiles -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+      <span class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Συνολικος Τζιρος (Μεικτο)</span>
+      <span class="text-xl font-black font-mono text-slate-900 mt-1 block">
+        {{ totalsSummary().gross | number: '1.2-2' }} €
+      </span>
+    </div>
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+      <span class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Καθαρη Αξια</span>
+      <span class="text-xl font-bold font-mono text-slate-700 mt-1 block">
+        {{ totalsSummary().net | number: '1.2-2' }} €
+      </span>
+    </div>
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+      <span class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Συνολο Φ.Π.Α.</span>
+      <span class="text-xl font-bold font-mono text-indigo-600 mt-1 block">
+        {{ totalsSummary().vat | number: '1.2-2' }} €
+      </span>
+    </div>
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+      <span class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Επιτυχεις Διαβιβασεις</span>
+      <div class="flex items-center justify-between mt-1">
+        <span class="text-xl font-bold font-mono text-emerald-600">
+          {{ totalsSummary().transmittedCount }} / {{ invoices().length }}
+        </span>
+        <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+          {{ totalsSummary().successRate }}%
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters Bar -->
+  <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+    <div class="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
+      <!-- Search Box -->
+      <div class="relative flex-1 min-w-[180px]">
+        <input
+          type="text"
+          [ngModel]="searchQuery()"
+          (ngModelChange)="searchQuery.set($event)"
+          placeholder="Αναζήτηση με Α.Φ.Μ., Επωνυμία ή Σειρά/Αριθμό..."
+          class="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-xs bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition font-medium"
+        />
+        <span class="absolute left-2.5 top-2.5 text-slate-400">🔍</span>
+      </div>
+
+      <!-- Document Type Filter -->
+      <select
+        [ngModel]="selectedType()"
+        (ngModelChange)="selectedType.set($event)"
+        class="border border-slate-200 rounded-lg px-2.5 py-2 bg-white text-slate-700 font-medium cursor-pointer"
+      >
+        <option value="ALL">Όλοι οι Τύποι</option>
+        <option value="1.1">1.1 - Τιμολόγιο Πώλησης</option>
+        <option value="1.2">1.2 - Ενδοκοινοτική Παράδοση</option>
+        <option value="2.1">2.1 - Παροχή Υπηρεσιών</option>
+        <option value="11.1">11.1 - Απόδειξη Λιανικής (ΑΛΠ)</option>
+        <option value="11.2">11.2 - Απόδειξη Παροχής (ΑΠΥ)</option>
+        <option value="9.1">9.1 - Δελτίο Αποστολής (Συγκεκριμένος Πελάτης)</option>
+        <option value="9.2">9.2 - Συγκεντρωτικό Δελτίο Διακίνησης</option>
+        <option value="9.3">9.3 - Δελτίο Αποστολής (Συνοδευτικό)</option>
+      </select>
+    </div>
+
+    <!-- Status Filter Tabs -->
+    <div class="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+      <button
+        type="button"
+        (click)="selectedStatus.set('ALL')"
+        [class.bg-white]="selectedStatus() === 'ALL'"
+        [class.text-slate-900]="selectedStatus() === 'ALL'"
+        [class.shadow-2xs]="selectedStatus() === 'ALL'"
+        [class.text-slate-500]="selectedStatus() !== 'ALL'"
+        class="px-2.5 py-1.5 rounded-md font-semibold transition cursor-pointer"
+      >
+        Όλα
+      </button>
+      <button
+        type="button"
+        (click)="selectedStatus.set('TRANSMITTED')"
+        [class.bg-white]="selectedStatus() === 'TRANSMITTED'"
+        [class.text-emerald-700]="selectedStatus() === 'TRANSMITTED'"
+        [class.shadow-2xs]="selectedStatus() === 'TRANSMITTED'"
+        [class.text-slate-500]="selectedStatus() !== 'TRANSMITTED'"
+        class="px-2.5 py-1.5 rounded-md font-semibold transition cursor-pointer"
+      >
+        myDATA (Επιτυχή)
+      </button>
+      <button
+        type="button"
+        (click)="selectedStatus.set('FAILED')"
+        [class.bg-white]="selectedStatus() === 'FAILED'"
+        [class.text-rose-700]="selectedStatus() === 'FAILED'"
+        [class.shadow-2xs]="selectedStatus() === 'FAILED'"
+        [class.text-slate-500]="selectedStatus() !== 'FAILED'"
+        class="px-2.5 py-1.5 rounded-md font-semibold transition cursor-pointer"
+      >
+        Αποτυχίες
+      </button>
+      <button
+        type="button"
+        (click)="selectedStatus.set('DRAFT')"
+        [class.bg-white]="selectedStatus() === 'DRAFT'"
+        [class.text-amber-700]="selectedStatus() === 'DRAFT'"
+        [class.shadow-2xs]="selectedStatus() === 'DRAFT'"
+        [class.text-slate-500]="selectedStatus() !== 'DRAFT'"
+        class="px-2.5 py-1.5 rounded-md font-semibold transition cursor-pointer"
+      >
+        Πρόχειρα
+      </button>
+    </div>
+  </div>
+
+  <!-- Invoices Data Table -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+    @if (filteredInvoices().length === 0) {
+      <div class="p-12 text-center text-slate-500 space-y-3">
+        <span class="text-3xl block">📑</span>
+        <p class="text-sm font-semibold text-slate-700">Δεν βρέθηκαν παραστατικά</p>
+        <p class="text-xs text-slate-400">Δοκιμάστε διαφορετικά φίλτρα αναζήτησης ή εκδώστε ένα νέο τιμολόγιο.</p>
+      </div>
+    } @else {
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+            <tr>
+              <th class="py-3 px-4">Παραστατικο</th>
+              <th class="py-3 px-4">Ημερομηνια</th>
+              <th class="py-3 px-4">Ληπτης / Πελατης</th>
+              <th class="py-3 px-4 text-right">Καθαρη</th>
+              <th class="py-3 px-4 text-right">ΦΠΑ</th>
+              <th class="py-3 px-4 text-right">Συνολο</th>
+              <th class="py-3 px-4 text-center">Κατασταση myDATA</th>
+              <th class="py-3 px-4 text-center">Ενεργειες</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 font-sans">
+            @for (inv of filteredInvoices(); track inv.id) {
+              <tr
+                class="hover:bg-slate-50/70 transition"
+                [class.bg-emerald-50]="isHighlighted(inv)"
+                [class.ring-1]="isHighlighted(inv)"
+                [class.ring-emerald-400]="isHighlighted(inv)"
+              >
+                <td class="py-3 px-4">
+                  <div class="font-bold font-mono text-slate-900 text-sm flex items-center gap-1.5">
+                    <span>{{ inv.series }}-{{ inv.documentNumber }}</span>
+                    @if (isHighlighted(inv)) {
+                      <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-600 text-white animate-pulse">
+                        ΝΕΟ
+                      </span>
+                    }
+                  </div>
+                  <span class="text-[10px] font-medium text-slate-500">
+                    {{ getDocTypeBadge(inv.invoiceType) }}
+                  </span>
+                </td>
+
+                <td class="py-3 px-4 font-mono text-slate-600 text-xs">
+                  {{ inv.issueDate }}
+                </td>
+
+                <td class="py-3 px-4">
+                  <div class="font-bold text-slate-900 max-w-[200px] truncate">
+                    {{ inv.customerName || '—' }}
+                  </div>
+                  <span class="font-mono text-[10px] text-slate-500">
+                    ΑΦΜ: {{ inv.customerAfm || '—' }}
+                  </span>
+                </td>
+
+                <td class="py-3 px-4 text-right font-mono text-slate-700">
+                  {{ inv.totalNet | number: '1.2-2' }} €
+                </td>
+                <td class="py-3 px-4 text-right font-mono text-slate-500">
+                  {{ inv.totalVat | number: '1.2-2' }} €
+                </td>
+                <td class="py-3 px-4 text-right font-mono font-bold text-slate-900 text-sm">
+                  {{ inv.totalGross | number: '1.2-2' }} €
+                </td>
+
+                <td class="py-3 px-4 text-center">
+  @if (isInvoiceCancelled(inv)) {
+    <div class="inline-flex flex-col items-center">
+      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+        ✕ ΑΚΥΡΩΜΕΝΟ
+      </span>
+      @if (inv.mark) {
+        <span class="text-[9px] font-mono text-slate-400 mt-0.5">
+          ΜΑΡΚ: {{ inv.mark }}
+        </span>
+      }
+    </div>
+  } @else if (inv.transmissionStatus === 'TRANSMITTED' && inv.mark) {
+    <div class="inline-flex flex-col items-center">
+      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+        ✓ MARK: {{ inv.mark }}
+      </span>
+      @if (inv.qrUrl) {
+        <a
+          [href]="inv.qrUrl"
+          target="_blank"
+          class="text-[9px] text-indigo-600 hover:underline mt-0.5 font-medium"
+        >
+          Επαλήθευση ΑΑΔΕ ↗
+        </a>
+      }
+    </div>
+  } @else if (inv.transmissionStatus === 'FAILED') {
+    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+      ✕ Αποτυχία
+    </span>
+  } @else {
+    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+      ⏳ Πρόχειρο
+    </span>
+  }
+</td>
+
+                <td class="py-3 px-4 text-center">
+                  <div class="flex items-center justify-center gap-1.5">
+                    @if (inv.transmissionStatus !== 'TRANSMITTED' && !isInvoiceCancelled(inv)) {
+  <button
+    type="button"
+    (click)="editDraft(inv)"
+    title="Επεξεργασία Προχείρου"
+    class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold rounded-lg text-xs transition cursor-pointer flex items-center gap-1"
+  >
+    <span>✏️</span>
+    <span>Επεξεργασία</span>
+  </button>
+
+  <button
+    type="button"
+    (click)="deleteDraft(inv)"
+    title="Διαγραφή Προχείρου"
+    class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+  >
+    <span>🗑️</span>
+  </button>
+}
+
+                    <button
+                      type="button"
+                      (click)="openPrintModal(inv)"
+                      title="Επανεκτύπωση (A4 / Θερμικό 80mm)"
+                      class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded-lg text-xs transition cursor-pointer flex items-center gap-1"
+                    >
+                      <span>🖨️</span>
+                      <span>Εκτύπωση</span>
+                    </button>
+                    @if (inv.transmissionStatus === 'TRANSMITTED' && inv.mark && !isInvoiceCancelled(inv)) {
+  <button
+    type="button"
+    (click)="confirmAndCancelInvoice(inv)"
+    [disabled]="isRetrying(inv.id)"
+    title="Ακύρωση Παραστατικού στην ΑΑΔΕ"
+    class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 disabled:opacity-50"
+  >
+    <span>✕</span>
+    <span>Ακύρωση</span>
+  </button>
+}
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>
+
+<!-- RE-PRINT MODAL OVERLAY -->
+@if (showPrintModal() && selectedPrintData()) {
+  <div
+    class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+    (click)="showPrintModal.set(false)"
+  >
+    <div
+      class="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl shadow-2xl bg-white"
+      (click)="$event.stopPropagation()"
+    >
+      <maranth-invoice-print
+        [invoice]="selectedPrintData()!"
+        (close)="showPrintModal.set(false)"
+      />
+    </div>
+  </div>
+}

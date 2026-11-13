@@ -1,7 +1,6 @@
-import { Component, ChangeDetectionStrategy, inject, signal, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, ChangeDetectorRef, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { greekAfmValidator } from '../../core/validators/afm.validator';
-import { FormBuilder, ReactiveFormsModule, Validators, FormControl } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule, FormControl } from '@angular/forms';
 import { LocalDbService } from '@core/services/local-db.service';
 import { AuthTenantService } from '@core/services/auth-tenant.service';
 import { MyDataService } from '@core/services/mydata.service';
@@ -23,110 +22,120 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
       </div>
 
       <form [formGroup]="form" (ngSubmit)="onSave()" class="space-y-6">
-       <!-- Section 0: Subscription & License Console (Maranth Executive) -->
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          
-          <!-- Top Obsidian Ribbon -->
-          <div class="bg-slate-950 px-5 sm:px-6 py-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-lg text-blue-400 shrink-0 shadow-inner">
-                🛡️
-              </div>
-              <div>
-                <div class="flex items-center gap-2 flex-wrap">
-                  <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Συνδρομή Συστήματος
-                  </h3>
-                  <span class="px-2 py-0.5 text-xs font-mono font-black rounded-md bg-white/10 text-white border border-white/20">
-                    {{ form.get('subscriptionTier')?.value || 'RETAIL_SHOP' }}
-                  </span>
+        <!-- Section 0: Subscription & License Console (Maranth Executive) -->
+        @if (auth.isTenantConfigured()) {
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <!-- Top Ribbon -->
+            <div class="bg-slate-950 px-5 sm:px-6 py-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-lg text-blue-400 shrink-0 shadow-inner">
+                  🛡️
                 </div>
-                <p class="text-[11px] font-mono text-slate-400 mt-0.5">
-                  Tenant: <span class="text-slate-200 font-bold select-all">{{ form.get('tenantId')?.value || auth.currentTenantId() || 'tenant_minimarket' }}</span>
-                </p>
-              </div>
-            </div>
-
-            <!-- License Status Pill -->
-            <div class="flex items-center sm:self-center">
-              @switch (form.get('subscriptionStatus')?.value) {
-                @case ('ACTIVE') {
-                  <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    ΕΝΕΡΓΗ
-                  </span>
-                }
-                @case ('GRACE_PERIOD') {
-                  <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                    <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-                    ΧΑΡΙΣΤΙΚΗ ΠΕΡΙΟΔΟΣ
-                  </span>
-                }
-                @case ('READ_ONLY') {
-                  <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30">
-                    <span class="w-2 h-2 rounded-full bg-rose-400"></span>
-                    ΜΟΝΟ ΑΝΑΓΝΩΣΗ
-                  </span>
-                }
-                @case ('SUSPENDED') {
-                  <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-rose-950 text-rose-300 border border-rose-800">
-                    <span class="w-2 h-2 rounded-full bg-rose-500"></span>
-                    ΑΝΕΣΤΑΛΗ
-                  </span>
-                }
-                @default {
-                  <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                    <span class="w-2 h-2 rounded-full bg-slate-400"></span>
-                    ΔΟΚΙΜΑΣΤΙΚΗ (TRIAL)
-                  </span>
-                }
-              }
-            </div>
-          </div>
-
-          <!-- Card Body: Quota & Validity -->
-          <div class="p-5 sm:p-6 bg-slate-50/50 space-y-4 text-xs">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
-              <!-- Validity Period -->
-              <div class="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-1">
-                <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Διάρκεια Άδειας
-                </span>
                 <div>
-                  @if (!form.get('validUntil')?.value || form.get('validUntil')?.value?.startsWith('2099') || form.get('validUntil')?.value?.startsWith('2999')) {
-                    <span class="inline-flex items-center gap-1 font-black text-xs text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-                      ★ ΑΠΕΡΙΟΡΙΣΤΗ (LIFETIME)
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">
+                      Συνδρομή Συστήματος
+                    </h3>
+                    <span class="px-2 py-0.5 text-xs font-mono font-black rounded-md bg-white/10 text-white border border-white/20">
+                      {{ form.get('subscriptionTier')?.value || 'TRIAL' }}
                     </span>
-                  } @else {
-                    <span class="font-mono text-sm font-bold text-slate-900">
-                      Ισχύει έως {{ form.get('validUntil')?.value | date:'dd/MM/yyyy' }}
+                  </div>
+                  <p class="text-[11px] font-mono text-slate-400 mt-0.5">
+                    Tenant: <span class="text-slate-200 font-bold select-all">{{ form.get('tenantId')?.value || auth.currentTenantId() }}</span>
+                  </p>
+                </div>
+              </div>
+
+              <!-- License Status Pill -->
+              <div class="flex items-center sm:self-center">
+                @switch (form.get('subscriptionStatus')?.value) {
+                  @case ('ACTIVE') {
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      ΕΝΕΡΓΗ
                     </span>
                   }
-                </div>
+                  @case ('GRACE_PERIOD') {
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                      <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                      ΧΑΡΙΣΤΙΚΗ ΠΕΡΙΟΔΟΣ
+                    </span>
+                  }
+                  @case ('READ_ONLY') {
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                      <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+                      ΜΟΝΟ ΑΝΑΓΝΩΣΗ
+                    </span>
+                  }
+                  @case ('SUSPENDED') {
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-rose-950 text-rose-300 border border-rose-800">
+                      <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                      ΑΝΕΣΤΑΛΗ
+                    </span>
+                  }
+                  @default {
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                      <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                      ΔΟΚΙΜΑΣΤΙΚΗ (TRIAL)
+                    </span>
+                  }
+                }
               </div>
+            </div>
 
-              <!-- Monthly Quota -->
-              <div class="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-1.5">
-                <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  <span>Χρήση Μηνός</span>
-                  <span class="font-mono text-xs text-slate-900">
-                    {{ form.get('currentMonthDocumentCount')?.value || 0 }} / {{ form.get('maxMonthlyDocuments')?.value || '∞' }}
+            <!-- Card Body: Quota & Validity -->
+            <div class="p-5 sm:p-6 bg-slate-50/50 space-y-4 text-xs">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- Validity Period -->
+                <div class="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-1">
+                  <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Διάρκεια Άδειας
                   </span>
+                  <div>
+                    @if (!form.get('validUntil')?.value || form.get('validUntil')?.value?.startsWith('2099') || form.get('validUntil')?.value?.startsWith('2999')) {
+                      <span class="inline-flex items-center gap-1 font-black text-xs text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+                        ★ ΑΠΕΡΙΟΡΙΣΤΗ (LIFETIME)
+                      </span>
+                    } @else {
+                      <span class="font-mono text-sm font-bold text-slate-900">
+                        Ισχύει έως {{ form.get('validUntil')?.value | date:'dd/MM/yyyy' }}
+                      </span>
+                    }
+                  </div>
                 </div>
-                <!-- Progress Line Indicator -->
-                <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
-  <div 
-    class="bg-blue-600 h-full rounded-full transition-all"
-    [style.width.%]="quotaUsagePercentage"
-  ></div>
-</div>
-              </div>
 
+                <!-- Monthly Quota -->
+                <div class="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-1.5">
+                  <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <span>Χρήση Μηνός</span>
+                    <span class="font-mono text-xs text-slate-900">
+                      {{ form.get('currentMonthDocumentCount')?.value || 0 }} / {{ form.get('maxMonthlyDocuments')?.value || '50' }}
+                    </span>
+                  </div>
+                  <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
+                    <div 
+                      class="bg-blue-600 h-full rounded-full transition-all"
+                      [style.width.%]="quotaUsagePercentage"
+                    ></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-
-        </div>
+        } @else {
+          <!-- Clean Zero-State Notice for New Client -->
+          <div class="p-5 bg-blue-50/70 border border-blue-200 rounded-2xl flex items-start gap-3 text-xs text-blue-900">
+            <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-base shrink-0 shadow-xs">
+              ℹ️
+            </div>
+            <div>
+              <h4 class="font-bold text-sm text-blue-950">Νέα Εγκατάσταση Επιχείρησης</h4>
+              <p class="mt-0.5 text-blue-800 leading-relaxed">
+                Συμπληρώστε το Α.Φ.Μ. και τα φορολογικά στοιχεία της επιχείρησής σας στην παρακάτω φόρμα. Μόλις αποθηκευτούν, η άδεια χρήσης και το προφίλ εκδότη myDATA θα ενεργοποιηθούν αυτόματα.
+              </p>
+            </div>
+          </div>
+        }
 
         <!-- Section 1: Business Identity & Tax Details -->
         <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
@@ -151,7 +160,7 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
         <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
           <div>
             <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700">Φυσική Διεύθυνση Έδρας / Καταστήματος</h2>
-            <p class="text-[11px] text-slate-400 mt-0.5">Αποτελεί τον προεπιλεγμένο τόπο εκκίνησης (Τόπος Έναρξης) για τα Δελτία Αποστολής (9.1)</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Αποτελεί τον προεπιλεγμένο τόπο εκκίνησης (Τόπος Έναρξης) για τα Δελτία Αποστολής (9.1, 9.2, 9.3)</p>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs">
             <div class="sm:col-span-2">
@@ -241,13 +250,13 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
             </span>
           }
           <button
-  type="submit"
-  [disabled]="isSaving()"
-  class="inline-flex items-center justify-center gap-2 h-10 px-5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 disabled:opacity-50 transition active:scale-98 cursor-pointer"
->
-  <span>💾</span>
-  <span>{{ isSaving() ? 'Αποθήκευση...' : 'Αποθήκευση Ρυθμίσεων' }}</span>
-</button>
+            type="submit"
+            [disabled]="isSaving()"
+            class="inline-flex items-center justify-center gap-2 h-10 px-5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 disabled:opacity-50 transition active:scale-98 cursor-pointer"
+          >
+            <span>💾</span>
+            <span>{{ isSaving() ? 'Αποθήκευση...' : 'Αποθήκευση Ρυθμίσεων' }}</span>
+          </button>
         </div>
       </form>
     </div>
@@ -258,51 +267,55 @@ export class SettingsComponent implements OnInit {
   private readonly db = inject(LocalDbService);
   public readonly auth = inject(AuthTenantService);
   private readonly myDataService = inject(MyDataService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   public readonly isSaving = signal<boolean>(false);
   public readonly savedNotification = signal<string | null>(null);
 
   public readonly form = this.fb.group({
-  // Keep basic text values, remove aggressive blocking validators
-  afm: [''],
-  doy: [''],
-  legalName: [''],
-  street: [''],
-  number: [''],
-  postalCode: [''],
-  city: [''],
-  branch: [0],
-  defaultSeries: ['A'],
-  aadeUserId: [''],
-  aadeSubscriptionKey: [''],
-  
-  // Environment selector (boolean toggle)
-  isProduction: [false],
-
-  // GSIS credentials
-  gsisUsername: [''],
-  gsisPassword: [''],
-
-  // Subscription controls
-  subscriptionTier: ['RETAIL_SHOP' as SubscriptionTier],
-  subscriptionStatus: ['ACTIVE' as SubscriptionStatus],
-  validUntil: new FormControl<string | null>(null),
-  maxMonthlyDocuments: [1000],
-  currentMonthDocumentCount: [0]
-});
+    afm: [''],
+    doy: [''],
+    legalName: [''],
+    street: [''],
+    number: [''],
+    postalCode: [''],
+    city: [''],
+    branch: [0],
+    defaultSeries: ['A'],
+    aadeUserId: [''],
+    aadeSubscriptionKey: [''],
+    isProduction: [false],
+    gsisUsername: [''],
+    gsisPassword: [''],
+    subscriptionTier: ['RETAIL_SHOP' as SubscriptionTier],
+    subscriptionStatus: ['ACTIVE' as SubscriptionStatus],
+    validUntil: new FormControl<string | null>(null),
+    maxMonthlyDocuments: [1000],
+    currentMonthDocumentCount: [0],
+    tenantId: ['']
+  });
 
   async ngOnInit(): Promise<void> {
-    const tenantId = this.auth.currentTenantId();
-    if (!tenantId) return;
+    let tenantId = this.auth.currentTenantId();
 
-    const saved = await this.db.getSettingsForTenant(tenantId);
+    let saved: any = null;
+    if (tenantId) {
+      saved = await this.db.getSettingsForTenant(tenantId);
+    } else {
+      const all = await this.db.settings.toArray();
+      if (all.length > 0) {
+        saved = all[0];
+        tenantId = saved.tenantId || saved.id;
+      }
+    }
+
     if (saved) {
-      // Safe fallback: uses fiscalEnvironment if set, else falls back to legacy isProduction
-      const isProd = saved.fiscalEnvironment 
-        ? saved.fiscalEnvironment === 'production' 
+      const isProd = saved.fiscalEnvironment
+        ? saved.fiscalEnvironment === 'production'
         : !!(saved as any).isProduction;
 
       this.form.patchValue({
+        tenantId: saved.tenantId || saved.id || '',
         afm: saved.afm ? saved.afm.replace(/\D/g, '') : '',
         doy: saved.doy ?? '',
         legalName: saved.legalName ?? '',
@@ -321,77 +334,131 @@ export class SettingsComponent implements OnInit {
         subscriptionStatus: (saved.subscriptionStatus as SubscriptionStatus) ?? 'ACTIVE',
         validUntil: saved.validUntil ?? null,
         maxMonthlyDocuments: saved.maxMonthlyDocuments ?? 1000,
-        currentMonthDocumentCount: saved.currentMonthDocumentCount ?? 0
+        currentMonthDocumentCount: saved.currentMonthDocumentCount ?? 0,
       });
     }
   }
 
   async onSave(): Promise<void> {
-    if (this.form.invalid) {
-      this.form.markAllAsTouched();
-      alert('Παρακαλώ διορθώστε τα κόκκινα πεδία στη φόρμα πριν την αποθήκευση.');
+  if (this.form.invalid) {
+    this.form.markAllAsTouched();
+    alert('Παρακαλώ διορθώστε τα πεδία στη φόρμα πριν την αποθήκευση.');
+    return;
+  }
+
+  const val = this.form.getRawValue();
+  const cleanAfm = (val.afm || '').replace(/\D/g, '').trim();
+
+  if (!cleanAfm || cleanAfm.length !== 9) {
+    alert('Παρακαλώ εισάγετε ένα έγκυρο 9-ψήφιο Α.Φ.Μ. καταστήματος.');
+    return;
+  }
+
+  if (val.isProduction) {
+    const confirmLive = confirm(
+      '⚠️ ΠΡΟΣΟΧΗ: Ενεργοποιείτε το ΠΑΡΑΓΩΓΙΚΟ ΠΕΡΙΒΑΛΛΟΝ (LIVE AADE myDATA).\n\n' +
+      'Όλα τα παραστατικά θα υποβάλλονται επίσημα στην ΑΑΔΕ με νομικό MARK.\n\n' +
+      'Είστε σίγουροι ότι θέλετε να προχωρήσετε;'
+    );
+    if (!confirmLive) {
       return;
     }
+  }
 
-    const tenantId = this.auth.currentTenantId();
-    if (!tenantId) {
-      alert('Σφάλμα: Δεν βρέθηκε ενεργός οργανισμός (Tenant).');
-      return;
-    }
+  const tenantId = this.auth.currentTenantId() || `tenant_${cleanAfm}`;
 
-    this.isSaving.set(true);
-    try {
-      const val = this.form.getRawValue();
-      const resolvedEnv: FiscalEnvironment = val.isProduction ? 'production' : 'dev';
+  this.isSaving.set(true);
+  try {
+    const resolvedEnv: FiscalEnvironment = val.isProduction ? 'production' : 'dev';
 
-      await this.db.saveSettingsForTenant(tenantId, {
+    const payload = {
+      id: tenantId,
+      tenantId,
+      afm: cleanAfm,
+      doy: val.doy || '',
+      legalName: val.legalName || '',
+      street: val.street || '',
+      number: val.number || '',
+      postalCode: val.postalCode || '',
+      city: val.city || '',
+      branch: Number(val.branch ?? 0),
+      defaultSeries: val.defaultSeries || 'A',
+      aadeUserId: (val.aadeUserId || '').trim(),
+      aadeSubscriptionKey: (val.aadeSubscriptionKey || '').trim(),
+      fiscalEnvironment: resolvedEnv,
+      isProduction: val.isProduction ?? false,
+      gsisUsername: (val.gsisUsername || '').trim(),
+      gsisPassword: (val.gsisPassword || '').trim(),
+      subscriptionTier: val.subscriptionTier ?? 'RETAIL_SHOP',
+      subscriptionStatus: val.subscriptionStatus ?? 'ACTIVE',
+      validUntil: val.validUntil,
+      maxMonthlyDocuments: val.maxMonthlyDocuments ?? 1000,
+      currentMonthDocumentCount: val.currentMonthDocumentCount ?? 0,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Initial save to Dexie and seed active tenant identity
+    await this.db.saveSettingsForTenant(tenantId, payload);
+    this.auth.seedTenantFromSettings(payload);
+
+    // 2. Fetch verified subscription status from Cloudflare Worker
+    await this.auth.syncTenantSubscriptionOnBoot(cleanAfm);
+
+    // 3. Synchronize confirmed subscription
+    const currentSub = this.auth.subscription();
+    if (currentSub) {
+      this.form.patchValue({
         tenantId,
-        afm: val.afm!,
-        doy: val.doy!,
-        legalName: val.legalName!,
-        street: val.street!,
-        number: val.number!,
-        postalCode: val.postalCode!,
-        city: val.city!,
-        branch: Number(val.branch ?? 0),
-        defaultSeries: val.defaultSeries || 'A',
-        aadeUserId: val.aadeUserId || '',
-        aadeSubscriptionKey: val.aadeSubscriptionKey || '',
-        fiscalEnvironment: resolvedEnv,
-        isProduction: val.isProduction ?? false,
-        gsisUsername: val.gsisUsername || '',
-        gsisPassword: val.gsisPassword || '',
-        subscriptionTier: val.subscriptionTier ?? 'RETAIL_SHOP',
-        subscriptionStatus: val.subscriptionStatus ?? 'ACTIVE',
-        validUntil: val.validUntil,
-        maxMonthlyDocuments: val.maxMonthlyDocuments ?? 1000,
-        currentMonthDocumentCount: val.currentMonthDocumentCount ?? 0,
-        updatedAt: new Date().toISOString()
+        subscriptionTier: currentSub.planName as SubscriptionTier,
+        subscriptionStatus: currentSub.status,
+        validUntil: currentSub.validUntil,
+        maxMonthlyDocuments: currentSub.maxMonthlyDocuments,
       });
 
-      // Synchronize runtime signal across the application
-      this.myDataService.setEnvironment(resolvedEnv);
+      const updatedPayload = {
+        ...payload,
+        subscriptionTier: currentSub.planName as SubscriptionTier,
+        subscriptionStatus: currentSub.status,
+        validUntil: currentSub.validUntil,
+        maxMonthlyDocuments: currentSub.maxMonthlyDocuments,
+      };
 
-      this.savedNotification.set('Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!');
-      setTimeout(() => this.savedNotification.set(null), 3000);
-    } catch (err) {
-      console.error('Failed to save tenant settings:', err);
-      alert('Προέκυψε σφάλμα κατά την αποθήκευση στο Dexie.');
-    } finally {
-      this.isSaving.set(false);
+      await this.db.saveSettingsForTenant(tenantId, updatedPayload);
+      this.auth.seedTenantFromSettings(updatedPayload);
+    } else {
+      this.form.patchValue({ tenantId });
     }
+
+    // 4. Update runtime AADE service environment signal
+    this.myDataService.setEnvironment(resolvedEnv);
+
+    // 5. Force Angular OnPush change detection to render the subscription card
+    this.cdr.markForCheck();
+
+    this.savedNotification.set('Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!');
+    setTimeout(() => {
+      this.savedNotification.set(null);
+      this.cdr.markForCheck();
+    }, 3000);
+  } catch (err) {
+    console.error('Failed to save tenant settings:', err);
+    alert('Προέκυψε σφάλμα κατά την αποθήκευση στο Dexie.');
+  } finally {
+    this.isSaving.set(false);
+    this.cdr.markForCheck();
   }
-
-  // Inside SettingsComponent class:
-public get quotaUsagePercentage(): number {
-  const max = Number(this.form.get('maxMonthlyDocuments')?.value);
-  const current = Number(this.form.get('currentMonthDocumentCount')?.value || 0);
-
-  if (!max || isNaN(max) || max <= 0) {
-    return 5; // Default minimal bar for unlimited / zero
-  }
-
-  const pct = Math.round((current / max) * 100);
-  return Math.min(100, Math.max(0, pct));
 }
+
+
+  public get quotaUsagePercentage(): number {
+    const max = Number(this.form.get('maxMonthlyDocuments')?.value);
+    const current = Number(this.form.get('currentMonthDocumentCount')?.value || 0);
+
+    if (!max || isNaN(max) || max <= 0) {
+      return 5;
+    }
+
+    const pct = Math.round((current / max) * 100);
+    return Math.min(100, Math.max(0, pct));
+  }
 }
