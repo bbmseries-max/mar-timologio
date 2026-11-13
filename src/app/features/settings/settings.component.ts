@@ -285,6 +285,17 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
               <span>✓</span> {{ savedNotification() }}
             </span>
           }
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-200/80">
+  <button
+    type="button"
+    (click)="onResetToDemo()"
+    [disabled]="isResettingDemo()"
+    class="h-10 px-3.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+    title="Επαναφορά προεπιλεγμένου καταστήματος Sandbox Demo"
+  >
+    <span>🔄</span>
+    <span>{{ isResettingDemo() ? 'Επαναφορά...' : 'Επαναφορά Demo' }}</span>
+  </button>
           <button
             type="submit"
             [disabled]="isSaving()"
@@ -293,6 +304,7 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
             <span>💾</span>
             <span>{{ isSaving() ? 'Αποθήκευση...' : 'Αποθήκευση Ρυθμίσεων' }}</span>
           </button>
+        </div>
         </div>
       </form>
     </div>
@@ -304,6 +316,7 @@ export class SettingsComponent implements OnInit {
   public readonly auth = inject(AuthTenantService);
   private readonly myDataService = inject(MyDataService);
   private readonly cdr = inject(ChangeDetectorRef);
+  public readonly isResettingDemo = signal<boolean>(false);
 
   public readonly isSaving = signal<boolean>(false);
   public readonly savedNotification = signal<string | null>(null);
@@ -503,4 +516,23 @@ export class SettingsComponent implements OnInit {
     const pct = Math.round((current / max) * 100);
     return Math.min(100, Math.max(0, pct));
   }
+
+  public async onResetToDemo(): Promise<void> {
+  const confirmed = window.confirm(
+    'Επαναφορά στις προεπιλεγμένες ρυθμίσεις Sandbox Demo;\n\n' +
+    'Τα τρέχοντα στοιχεία επιχείρησης και τα κλειδιά API στον τοπικό browser θα αντικατασταθούν με το προφίλ επίδειξης.'
+  );
+  if (!confirmed) return;
+
+  this.isResettingDemo.set(true);
+  try {
+    await this.auth.resetToSandboxDemo();
+    await this.myDataService.loadTenantEnvironment();
+
+    // Re-run your component's existing settings loader (check ngOnInit for the exact method name)
+    await this.ngOnInit();
+  } finally {
+    this.isResettingDemo.set(false);
+  }
+}
 }
