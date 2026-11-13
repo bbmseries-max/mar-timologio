@@ -357,80 +357,73 @@ export class AuthTenantService {
     this.router.navigate(['/login']);
   }
 
-  // Inside AuthTenantService
-public async startSandboxDemo(): Promise<void> {
-  const demoTenantId = 'tenant_067424104';
-  const demoSettings = {
-    id: demoTenantId,
-    tenantId: demoTenantId,
-    afm: '067424104',
-    doy: 'Δ\' ΑΘΗΝΩΝ',
-    legalName: 'MARANTH DEMO STORE ΜΟΝ. ΙΚΕ',
-    street: 'Ακαδημίας',
-    number: '45',
-    postalCode: '10672',
-    city: 'Αθήνα',
-    branch: 0,
-    defaultSeries: 'A',
-    aadeUserId: '',              // Blank -> Cloudflare Worker injects SANDBOX_AADE_USER_ID
-    aadeSubscriptionKey: '',     // Blank -> Cloudflare Worker injects SANDBOX_AADE_SUB_KEY
-    fiscalEnvironment: 'dev' as const,
-    isProduction: false,
-    subscriptionTier: 'RETAIL_SHOP',
-    subscriptionStatus: 'ACTIVE',
-    validUntil: '2099-12-31T23:59:59Z',
-    maxMonthlyDocuments: 1000,
-    currentMonthDocumentCount: 0,
-    updatedAt: new Date().toISOString(),
-  };
+ private ensureDemoUserSession(): void {
+    if (this.currentUser()) return;
 
-  await this.db.saveSettingsForTenant(demoTenantId, demoSettings);
-  this.seedTenantFromSettings(demoSettings);
-}
+    const demoUser: AuthUser = {
+      id: 'demo_user_067424104',
+      email: 'demo@maranth.gr',
+      displayName: 'Sandbox Demo User',
+      role: 'admin',
+    };
 
-public async ensureInitializedOrSeedDemo(): Promise<void> {
-  const existingSettings = await this.db.settings.toArray();
-
-  // Case 1: Returning user or live paying customer — hydrate their saved tenant
-  if (existingSettings.length > 0) {
-    const active = existingSettings[0];
-    this.seedTenantFromSettings(active);
-    return;
+    this.currentUser.set(demoUser);
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(demoUser));
   }
 
-  // Case 2: Fresh browser (desktop or mobile) — auto-seed zero-config Sandbox Demo
-  const demoTenantId = 'tenant_067424104';
-  const demoSettings = {
-    id: demoTenantId,
-    tenantId: demoTenantId,
-    afm: '067424104',
-    doy: 'Δ\' ΑΘΗΝΩΝ',
-    legalName: 'MARANTH DEMO STORE ΜΟΝ. ΙΚΕ',
-    street: 'Ακαδημίας',
-    number: '45',
-    postalCode: '10672',
-    city: 'Αθήνα',
-    branch: 0,
-    defaultSeries: 'A',
-    aadeUserId: '',              // Blank -> Cloudflare Worker injects SANDBOX_AADE_USER_ID
-    aadeSubscriptionKey: '',     // Blank -> Cloudflare Worker injects SANDBOX_AADE_SUB_KEY
-    fiscalEnvironment: 'dev' as const,
-    isProduction: false,
-    subscriptionTier: 'RETAIL_SHOP',
-    subscriptionStatus: 'ACTIVE',
-    validUntil: '2099-12-31T23:59:59Z',
-    maxMonthlyDocuments: 1000,
-    currentMonthDocumentCount: 0,
-    updatedAt: new Date().toISOString(),
-  };
+  public async startSandboxDemo(): Promise<void> {
+    const demoTenantId = 'tenant_067424104';
+    const demoSettings = {
+      id: demoTenantId,
+      tenantId: demoTenantId,
+      afm: '067424104',
+      doy: 'Δ\' ΑΘΗΝΩΝ',
+      legalName: 'MARANTH DEMO STORE ΜΟΝ. ΙΚΕ',
+      street: 'Ακαδημίας',
+      number: '45',
+      postalCode: '10672',
+      city: 'Αθήνα',
+      branch: 0,
+      defaultSeries: 'A',
+      aadeUserId: '',              // Blank -> Cloudflare Worker injects SANDBOX_AADE_USER_ID
+      aadeSubscriptionKey: '',     // Blank -> Cloudflare Worker injects SANDBOX_AADE_SUB_KEY
+      fiscalEnvironment: 'dev' as const,
+      isProduction: false,
+      subscriptionTier: 'RETAIL_SHOP',
+      subscriptionStatus: 'ACTIVE',
+      validUntil: '2099-12-31T23:59:59Z',
+      maxMonthlyDocuments: 1000,
+      currentMonthDocumentCount: 0,
+      updatedAt: new Date().toISOString(),
+    };
 
-  await this.db.saveSettingsForTenant(demoTenantId, demoSettings);
-  this.seedTenantFromSettings(demoSettings);
-}
+    await this.db.saveSettingsForTenant(demoTenantId, demoSettings);
+    this.seedTenantFromSettings(demoSettings);
+    this.ensureDemoUserSession();
+  }
 
-public async resetToSandboxDemo(): Promise<void> {
-  // Clear stored settings so ensureInitializedOrSeedDemo() seeds a clean Sandbox profile
-  await this.db.settings.clear();
-  await this.ensureInitializedOrSeedDemo();
-}
+  public async ensureInitializedOrSeedDemo(): Promise<void> {
+    const existingSettings = await this.db.settings.toArray();
+    const validTenant = existingSettings.find(
+      (s) => String(s?.afm || '').replace(/\D/g, '').trim().length === 9
+    );
+
+    // Case 1: Returning user or live paying customer with valid AFM — hydrate their saved tenant
+    if (validTenant) {
+      this.seedTenantFromSettings(validTenant);
+      this.ensureDemoUserSession();
+      return;
+    }
+
+    // Case 2: Fresh browser or empty/unconfigured record — auto-seed zero-config Sandbox Demo
+    await this.startSandboxDemo();
+  }
+
+  public async resetToSandboxDemo(): Promise<void> {
+    await this.db.settings.clear();
+    localStorage.removeItem(STORAGE_KEYS.USER);
+    localStorage.removeItem(STORAGE_KEYS.TENANT);
+    this.currentUser.set(null);
+    await this.ensureInitializedOrSeedDemo();
+  }
 }
