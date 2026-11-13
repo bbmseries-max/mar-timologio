@@ -10,7 +10,7 @@ export interface MyDataResponse {
   mark?: string;
   uid?: string;
   qrUrl?: string;
-  providerSignature?: string; // 👈 Resolved compilation gap
+  providerSignature?: string;
   error?: string;
   raw?: string;
 }
@@ -33,6 +33,8 @@ export class MyDataService {
 
   public readonly currentEnvironment = signal<FiscalEnvironment>('dev');
 
+  private readonly workerUrl = 'https://gsis-lookup.bbmseries.workers.dev/send-invoice';
+
   public async setEnvironment(env: FiscalEnvironment): Promise<void> {
     this.currentEnvironment.set(env);
 
@@ -50,50 +52,81 @@ export class MyDataService {
     if (!tenantId) return;
 
     const settings = await this.db.getSettings(tenantId);
-    const env: FiscalEnvironment = settings?.fiscalEnvironment === 'production' ? 'production' : 'dev';
+    const env: FiscalEnvironment =
+      settings?.fiscalEnvironment === 'production' || settings?.isProduction
+        ? 'production'
+        : settings?.fiscalEnvironment === 'mock'
+          ? 'mock'
+          : 'dev';
+
     this.currentEnvironment.set(env);
   }
 
-  private readonly workerUrl = 'https://gsis-lookup.bbmseries.workers.dev/send-invoice';
-
   /**
-   * Transmits any invoice or transport document (1.1, 9.2, 9.3, etc.) to AADE myDATA.
+   * Transmits any invoice or transport document (1.1, 1.2, 1.3, 9.1, 9.2, 9.3, etc.) to AADE myDATA.
    */
   public async transmitInvoice(invoice: any): Promise<MyDataResponse> {
     const tenantId = invoice?.tenantId || this.auth.currentTenantId() || 'tenant_minimarket';
-
-    // 1. Fetch tenant-specific settings strictly by tenantId
     const settings = await this.db.getSettings(tenantId);
 
-    const isProd = settings?.isProduction === true || settings?.fiscalEnvironment === 'production';
-    const fiscalEnv: FiscalEnvironment = isProd ? 'production' : 'dev';
+    const fiscalEnv: FiscalEnvironment =
+      settings?.fiscalEnvironment === 'production' || settings?.isProduction
+        ? 'production'
+        : settings?.fiscalEnvironment === 'mock' || this.currentEnvironment() === 'mock'
+          ? 'mock'
+          : 'dev';
+
+    this.currentEnvironment.set(fiscalEnv);
+
+    // 0. OFFLINE SIMULATION MODE (mock) — Local Dexie persistence only, zero AADE network calls
+    if (fiscalEnv === 'mock') {
+      const mockMark = `40000${Date.now().toString().slice(-10)}`;
+      const mockUid = `MOCK-${crypto.randomUUID().replace(/-/g, '').substring(0, 16).toUpperCase()}`;
+      const mockQrUrl = `https://mydataapidev.aade.gr/TimologioQR/QRInfo?q=${mockMark}`;
+
+      if (invoice?.id) {
+        await this.db.markInvoiceAsTransmitted(invoice.id, {
+          mark: mockMark,
+          uid: mockUid,
+          qrUrl: mockQrUrl,
+        });
+      }
+
+      return {
+        success: true,
+        mark: mockMark,
+        uid: mockUid,
+        qrUrl: mockQrUrl,
+        raw: `<ResponseDoc><response><statusCode>Success</statusCode><invoiceMark>${mockMark}</invoiceMark><invoiceUid>${mockUid}</invoiceUid></response></ResponseDoc>`,
+      };
+    }
+
+    const isProd = fiscalEnv === 'production';
 
     let issuerAfm = settings?.afm ? String(settings.afm).replace(/\D/g, '').trim() : '';
-    let userId = (settings?.aadeUserId || '').trim();
-    let subKey = (settings?.aadeSubscriptionKey || '').trim();
+    const userId = (settings?.aadeUserId || '').trim();
+    const subKey = (settings?.aadeSubscriptionKey || '').trim();
 
-    // Dev fallbacks for local integration testing
+    // In Sandbox (dev) mode, Cloudflare Worker auto-injects SANDBOX_AADE_USER_ID / SUB_KEY / ISSUER_AFM
     if (!isProd) {
       issuerAfm = issuerAfm || '067424104';
-      userId = userId || 'cuko93dev';
-      subKey = subKey || 'eaba5813069d0833f4ccb06dc219ee46';
     }
 
     if (!issuerAfm) {
       throw new Error(`Δεν έχει ρυθμιστεί Α.Φ.Μ. εκδότη για το tenant: ${tenantId}. Ελέγξτε τις Ρυθμίσεις.`);
     }
 
-    if (!userId || !subKey) {
-      throw new Error(`Λείπουν τα διαπιστευτήρια myDATA (User ID ή Subscription Key) για το tenant: ${tenantId}.`);
+    if (isProd && (!userId || !subKey)) {
+      throw new Error(`Λείπουν τα παραγωγικά διαπιστευτήρια myDATA (User ID ή Subscription Key) για το tenant: ${tenantId}.`);
     }
 
     // 2. Delegate XML generation to serializer
     const xmlPayload = this.aadeSerializer.serializeToXml(invoice, issuerAfm, settings);
 
-    console.log(`📤 [myDATA] Transmitting to worker | Env: ${fiscalEnv} | Tenant: ${tenantId} | Issuer: ${issuerAfm}`);
-    console.log('📄 [myDATA] RAW XML PAYLOAD:\n', xmlPayload);
+    if (!xmlPayload || !xmlPayload.trim()) {
+      throw new Error('Αποτυχία δημιουργίας XML παραστατικού (κενό payload).');
+    }
 
-    // Support dual payload envelope (JSON wrapped with headers for Cloudflare proxy)
     const envelope = {
       userId,
       subscriptionKey: subKey,
@@ -105,16 +138,14 @@ export class MyDataService {
       'Content-Type': 'application/json',
       'x-tenant-id': tenantId,
       'x-fiscal-env': fiscalEnv,
-      'aade-user-id': userId,
-      'ocp-apim-subscription-key': subKey,
+      ...(userId ? { 'aade-user-id': userId } : {}),
+      ...(subKey ? { 'ocp-apim-subscription-key': subKey } : {}),
     });
 
     try {
       const res = await firstValueFrom(
         this.http.post<any>(this.workerUrl, envelope, { headers })
       );
-
-      console.log('📡 [myDATA] Worker Raw Response:', res);
 
       let parsedMark = res.mark ? String(res.mark).trim() : undefined;
       let parsedUid = res.uid || res.invoiceUid;
@@ -152,7 +183,7 @@ export class MyDataService {
       }
 
       if (parsedMark && !parsedQrUrl) {
-        const qrBase = fiscalEnv === 'production'
+        const qrBase = isProd
           ? 'https://mydatapi.aade.gr/TimologioQR/QRInfo'
           : 'https://mydataapidev.aade.gr/TimologioQR/QRInfo';
         parsedQrUrl = `${qrBase}?q=${parsedMark}`;
@@ -168,7 +199,7 @@ export class MyDataService {
         raw: rawXml,
       };
 
-      // 4. Update and persist invoice record in Dexie upon success if valid id exists
+      // 4. Update and persist invoice record in Dexie upon success
       if (finalResponse.success && finalResponse.mark && invoice?.id) {
         await this.db.markInvoiceAsTransmitted(invoice.id, {
           mark: finalResponse.mark,
@@ -204,19 +235,40 @@ export class MyDataService {
     const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
     const settings = tenantSettings || (await this.db.getSettings(tenantId));
 
-    const isProd = settings?.isProduction === true || settings?.fiscalEnvironment === 'production';
-    const fiscalEnv: FiscalEnvironment = isProd ? 'production' : 'dev';
+    const fiscalEnv: FiscalEnvironment =
+      settings?.fiscalEnvironment === 'production' || settings?.isProduction
+        ? 'production'
+        : settings?.fiscalEnvironment === 'mock' || this.currentEnvironment() === 'mock'
+          ? 'mock'
+          : 'dev';
 
-    const userId = (settings?.aadeUserId || (isProd ? '' : 'cuko93dev')).trim();
-    const subscriptionKey = (settings?.aadeSubscriptionKey || (isProd ? '' : 'eaba5813069d0833f4ccb06dc219ee46')).trim();
+    // Offline simulation cancellation
+    if (fiscalEnv === 'mock') {
+      return {
+        success: true,
+        cancellationMark: `90000${Date.now().toString().slice(-10)}`,
+      };
+    }
+
+    const isProd = fiscalEnv === 'production';
+    const userId = (settings?.aadeUserId || '').trim();
+    const subscriptionKey = (settings?.aadeSubscriptionKey || '').trim();
+
+    if (isProd && (!userId || !subscriptionKey)) {
+      return {
+        success: false,
+        errors: ['Λείπουν τα παραγωγικά διαπιστευτήρια myDATA για την ακύρωση παραστατικού.'],
+      };
+    }
 
     const baseUrl = isProd
-      ? 'https://mydatapi.aade.gr'
+      ? 'https://mydatapi.aade.gr/myDATA'
       : 'https://mydataapidev.aade.gr';
 
     const targetEndpoint = `${baseUrl}/CancelInvoice?mark=${encodeURIComponent(mark.trim())}`;
 
     const envelope = {
+      action: 'CancelInvoice',
       userId,
       subscriptionKey,
       environment: fiscalEnv,
@@ -233,6 +285,8 @@ export class MyDataService {
             'Content-Type': 'application/json',
             'x-tenant-id': tenantId,
             'x-fiscal-env': fiscalEnv,
+            ...(userId ? { 'aade-user-id': userId } : {}),
+            ...(subscriptionKey ? { 'ocp-apim-subscription-key': subscriptionKey } : {}),
           },
         })
       );

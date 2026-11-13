@@ -16,7 +16,7 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
       <!-- Header -->
       <div class="border-b border-slate-200 pb-5 flex items-center justify-between">
         <div>
-          <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Ρυθμίσεις Καταστήματος & myDATA</h1>
+          <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Ρυθμίσεις Καταστήματος &amp; myDATA</h1>
           <p class="text-xs text-slate-500 mt-1">Φορολογική ταυτότητα, συνδρομή και διαπιστευτήρια AADE API</p>
         </div>
       </div>
@@ -113,7 +113,7 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
                     </span>
                   </div>
                   <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
-                    <div 
+                    <div
                       class="bg-blue-600 h-full rounded-full transition-all"
                       [style.width.%]="quotaUsagePercentage"
                     ></div>
@@ -190,7 +190,7 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
           </div>
         </div>
 
-        <!-- Section 3: AADE Friendly Credentials -->
+        <!-- Section 3: AADE Friendly Credentials & Environment Switch -->
         <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
           <div class="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
@@ -201,6 +201,7 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
               <p class="text-[11px] text-slate-400 mt-0.5">Κωδικοί διεπαφής από την ιστοσελίδα της ΑΑΔΕ (myDATA)</p>
             </div>
           </div>
+
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div>
               <label class="block font-semibold text-slate-700 mb-1">Όνομα Χρήστη (aade-user-id)</label>
@@ -211,11 +212,46 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
               <input type="password" formControlName="aadeSubscriptionKey" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="32-ψήφιο API Key" />
             </div>
           </div>
-          <div class="pt-2 flex items-center gap-2">
-            <input type="checkbox" id="isProdCheck" formControlName="isProduction" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-            <label for="isProdCheck" class="text-xs font-semibold text-slate-700 cursor-pointer">
-              Παραγωγικό Περιβάλλον myDATA (Live Transmission)
-            </label>
+
+          <!-- 3-Way Environment Mode Switch -->
+          <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span class="block text-xs font-bold text-slate-800">Λειτουργία Αποστολής myDATA</span>
+              <span class="text-[11px] text-slate-500">
+                @switch (form.get('fiscalEnvironment')?.value) {
+                  @case ('production') { Ενεργό Παραγωγικό ΑΑΔΕ — Επίσημη υποβολή με νομικό ΜΑΡΚ. }
+                  @case ('mock') { Τοπική Προσομοίωση (Offline Demo) — Χωρίς κλήσεις δικτύου ΑΑΔΕ. }
+                  @default { Δοκιμαστικό AADE Sandbox — Δοκιμαστικό ΜΑΡΚ χωρίς φορολογική ισχύ. }
+                }
+              </span>
+            </div>
+
+            <div class="inline-flex rounded-xl border border-slate-200 p-1 bg-slate-100 self-start sm:self-center">
+              <button
+                type="button"
+                (click)="form.patchValue({ fiscalEnvironment: 'mock', isProduction: false })"
+                [class]="form.get('fiscalEnvironment')?.value === 'mock'
+                  ? 'px-2.5 py-1.5 text-xs font-bold rounded-lg bg-cyan-600 text-white shadow-xs transition cursor-pointer'
+                  : 'px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer'">
+                OFFLINE DEMO
+              </button>
+              <button
+                type="button"
+                (click)="form.patchValue({ fiscalEnvironment: 'dev', isProduction: false })"
+                [class]="(form.get('fiscalEnvironment')?.value || 'dev') === 'dev'
+                  ? 'px-2.5 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 shadow-xs transition cursor-pointer'
+                  : 'px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer'">
+                SANDBOX
+              </button>
+              <button
+                type="button"
+                (click)="form.patchValue({ fiscalEnvironment: 'production', isProduction: true })"
+                [class]="form.get('fiscalEnvironment')?.value === 'production'
+                  ? 'px-2.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white shadow-xs transition cursor-pointer'
+                  : 'px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer'">
+                PRODUCTION
+              </button>
+            </div>
           </div>
         </div>
 
@@ -227,7 +263,7 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
                 <span>🏛️</span>
                 <span>GSIS Taxisnet Ειδικοί Κωδικοί (RgWsPublic2)</span>
               </h2>
-              <p class="text-[11px] text-slate-400 mt-0.5">Απαραίτητοι για την αυτόματη ανάκτηση επωνυμίας & στοιχείων πελατών/προμηθευτών βάσει ΑΦΜ</p>
+              <p class="text-[11px] text-slate-400 mt-0.5">Απαραίτητοι για την αυτόματη ανάκτηση επωνυμίας &amp; στοιχείων πελατών/προμηθευτών βάσει ΑΦΜ</p>
             </div>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
@@ -285,6 +321,7 @@ export class SettingsComponent implements OnInit {
     aadeUserId: [''],
     aadeSubscriptionKey: [''],
     isProduction: [false],
+    fiscalEnvironment: ['dev' as FiscalEnvironment],
     gsisUsername: [''],
     gsisPassword: [''],
     subscriptionTier: ['RETAIL_SHOP' as SubscriptionTier],
@@ -310,9 +347,12 @@ export class SettingsComponent implements OnInit {
     }
 
     if (saved) {
-      const isProd = saved.fiscalEnvironment
-        ? saved.fiscalEnvironment === 'production'
-        : !!(saved as any).isProduction;
+      const savedEnv: FiscalEnvironment = saved.fiscalEnvironment
+        ? saved.fiscalEnvironment
+        : (saved.isProduction ? 'production' : 'dev');
+      const isProd = savedEnv === 'production';
+
+      this.myDataService.setEnvironment(savedEnv);
 
       this.form.patchValue({
         tenantId: saved.tenantId || saved.id || '',
@@ -327,6 +367,7 @@ export class SettingsComponent implements OnInit {
         defaultSeries: saved.defaultSeries ?? 'A',
         aadeUserId: saved.aadeUserId ?? '',
         aadeSubscriptionKey: saved.aadeSubscriptionKey ?? '',
+        fiscalEnvironment: savedEnv,
         isProduction: isProd,
         gsisUsername: saved.gsisUsername ?? '',
         gsisPassword: saved.gsisPassword ?? '',
@@ -340,115 +381,116 @@ export class SettingsComponent implements OnInit {
   }
 
   async onSave(): Promise<void> {
-  if (this.form.invalid) {
-    this.form.markAllAsTouched();
-    alert('Παρακαλώ διορθώστε τα πεδία στη φόρμα πριν την αποθήκευση.');
-    return;
-  }
-
-  const val = this.form.getRawValue();
-  const cleanAfm = (val.afm || '').replace(/\D/g, '').trim();
-
-  if (!cleanAfm || cleanAfm.length !== 9) {
-    alert('Παρακαλώ εισάγετε ένα έγκυρο 9-ψήφιο Α.Φ.Μ. καταστήματος.');
-    return;
-  }
-
-  if (val.isProduction) {
-    const confirmLive = confirm(
-      '⚠️ ΠΡΟΣΟΧΗ: Ενεργοποιείτε το ΠΑΡΑΓΩΓΙΚΟ ΠΕΡΙΒΑΛΛΟΝ (LIVE AADE myDATA).\n\n' +
-      'Όλα τα παραστατικά θα υποβάλλονται επίσημα στην ΑΑΔΕ με νομικό MARK.\n\n' +
-      'Είστε σίγουροι ότι θέλετε να προχωρήσετε;'
-    );
-    if (!confirmLive) {
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      alert('Παρακαλώ διορθώστε τα πεδία στη φόρμα πριν την αποθήκευση.');
       return;
     }
-  }
 
-  const tenantId = this.auth.currentTenantId() || `tenant_${cleanAfm}`;
+    const val = this.form.getRawValue();
+    const cleanAfm = (val.afm || '').replace(/\D/g, '').trim();
 
-  this.isSaving.set(true);
-  try {
-    const resolvedEnv: FiscalEnvironment = val.isProduction ? 'production' : 'dev';
-
-    const payload = {
-      id: tenantId,
-      tenantId,
-      afm: cleanAfm,
-      doy: val.doy || '',
-      legalName: val.legalName || '',
-      street: val.street || '',
-      number: val.number || '',
-      postalCode: val.postalCode || '',
-      city: val.city || '',
-      branch: Number(val.branch ?? 0),
-      defaultSeries: val.defaultSeries || 'A',
-      aadeUserId: (val.aadeUserId || '').trim(),
-      aadeSubscriptionKey: (val.aadeSubscriptionKey || '').trim(),
-      fiscalEnvironment: resolvedEnv,
-      isProduction: val.isProduction ?? false,
-      gsisUsername: (val.gsisUsername || '').trim(),
-      gsisPassword: (val.gsisPassword || '').trim(),
-      subscriptionTier: val.subscriptionTier ?? 'RETAIL_SHOP',
-      subscriptionStatus: val.subscriptionStatus ?? 'ACTIVE',
-      validUntil: val.validUntil,
-      maxMonthlyDocuments: val.maxMonthlyDocuments ?? 1000,
-      currentMonthDocumentCount: val.currentMonthDocumentCount ?? 0,
-      updatedAt: new Date().toISOString(),
-    };
-
-    // 1. Initial save to Dexie and seed active tenant identity
-    await this.db.saveSettingsForTenant(tenantId, payload);
-    this.auth.seedTenantFromSettings(payload);
-
-    // 2. Fetch verified subscription status from Cloudflare Worker
-    await this.auth.syncTenantSubscriptionOnBoot(cleanAfm);
-
-    // 3. Synchronize confirmed subscription
-    const currentSub = this.auth.subscription();
-    if (currentSub) {
-      this.form.patchValue({
-        tenantId,
-        subscriptionTier: currentSub.planName as SubscriptionTier,
-        subscriptionStatus: currentSub.status,
-        validUntil: currentSub.validUntil,
-        maxMonthlyDocuments: currentSub.maxMonthlyDocuments,
-      });
-
-      const updatedPayload = {
-        ...payload,
-        subscriptionTier: currentSub.planName as SubscriptionTier,
-        subscriptionStatus: currentSub.status,
-        validUntil: currentSub.validUntil,
-        maxMonthlyDocuments: currentSub.maxMonthlyDocuments,
-      };
-
-      await this.db.saveSettingsForTenant(tenantId, updatedPayload);
-      this.auth.seedTenantFromSettings(updatedPayload);
-    } else {
-      this.form.patchValue({ tenantId });
+    if (!cleanAfm || cleanAfm.length !== 9) {
+      alert('Παρακαλώ εισάγετε ένα έγκυρο 9-ψήφιο Α.Φ.Μ. καταστήματος.');
+      return;
     }
 
-    // 4. Update runtime AADE service environment signal
-    this.myDataService.setEnvironment(resolvedEnv);
+    const resolvedEnv: FiscalEnvironment =
+      val.fiscalEnvironment ?? (val.isProduction ? 'production' : 'dev');
+    const isProdFlag = resolvedEnv === 'production';
 
-    // 5. Force Angular OnPush change detection to render the subscription card
-    this.cdr.markForCheck();
+    if (isProdFlag) {
+      const confirmLive = confirm(
+        '⚠️ ΠΡΟΣΟΧΗ: Ενεργοποιείτε το ΠΑΡΑΓΩΓΙΚΟ ΠΕΡΙΒΑΛΛΟΝ (LIVE AADE myDATA).\n\n' +
+        'Όλα τα παραστατικά θα υποβάλλονται επίσημα στην ΑΑΔΕ με νομικό MARK.\n\n' +
+        'Είστε σίγουροι ότι θέλετε να προχωρήσετε;'
+      );
+      if (!confirmLive) {
+        return;
+      }
+    }
 
-    this.savedNotification.set('Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!');
-    setTimeout(() => {
-      this.savedNotification.set(null);
+    const tenantId = this.auth.currentTenantId() || `tenant_${cleanAfm}`;
+
+    this.isSaving.set(true);
+    try {
+      const payload = {
+        id: tenantId,
+        tenantId,
+        afm: cleanAfm,
+        doy: val.doy || '',
+        legalName: val.legalName || '',
+        street: val.street || '',
+        number: val.number || '',
+        postalCode: val.postalCode || '',
+        city: val.city || '',
+        branch: Number(val.branch ?? 0),
+        defaultSeries: val.defaultSeries || 'A',
+        aadeUserId: (val.aadeUserId || '').trim(),
+        aadeSubscriptionKey: (val.aadeSubscriptionKey || '').trim(),
+        fiscalEnvironment: resolvedEnv,
+        isProduction: isProdFlag,
+        gsisUsername: (val.gsisUsername || '').trim(),
+        gsisPassword: (val.gsisPassword || '').trim(),
+        subscriptionTier: val.subscriptionTier ?? 'RETAIL_SHOP',
+        subscriptionStatus: val.subscriptionStatus ?? 'ACTIVE',
+        validUntil: val.validUntil,
+        maxMonthlyDocuments: val.maxMonthlyDocuments ?? 1000,
+        currentMonthDocumentCount: val.currentMonthDocumentCount ?? 0,
+        updatedAt: new Date().toISOString(),
+      };
+
+      // 1. Initial save to Dexie and seed active tenant identity
+      await this.db.saveSettingsForTenant(tenantId, payload);
+      this.auth.seedTenantFromSettings(payload);
+
+      // 2. Fetch verified subscription status from Cloudflare Worker
+      await this.auth.syncTenantSubscriptionOnBoot(cleanAfm);
+
+      // 3. Synchronize confirmed subscription
+      const currentSub = this.auth.subscription();
+      if (currentSub) {
+        this.form.patchValue({
+          tenantId,
+          subscriptionTier: currentSub.planName as SubscriptionTier,
+          subscriptionStatus: currentSub.status,
+          validUntil: currentSub.validUntil,
+          maxMonthlyDocuments: currentSub.maxMonthlyDocuments,
+        });
+
+        const updatedPayload = {
+          ...payload,
+          subscriptionTier: currentSub.planName as SubscriptionTier,
+          subscriptionStatus: currentSub.status,
+          validUntil: currentSub.validUntil,
+          maxMonthlyDocuments: currentSub.maxMonthlyDocuments,
+        };
+
+        await this.db.saveSettingsForTenant(tenantId, updatedPayload);
+        this.auth.seedTenantFromSettings(updatedPayload);
+      } else {
+        this.form.patchValue({ tenantId });
+      }
+
+      // 4. Update runtime AADE service environment signal
+      this.myDataService.setEnvironment(resolvedEnv);
+
+      // 5. Force Angular OnPush change detection to render the subscription card
       this.cdr.markForCheck();
-    }, 3000);
-  } catch (err) {
-    console.error('Failed to save tenant settings:', err);
-    alert('Προέκυψε σφάλμα κατά την αποθήκευση στο Dexie.');
-  } finally {
-    this.isSaving.set(false);
-    this.cdr.markForCheck();
-  }
-}
 
+      this.savedNotification.set('Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!');
+      setTimeout(() => {
+        this.savedNotification.set(null);
+        this.cdr.markForCheck();
+      }, 3000);
+    } catch (err) {
+      console.error('Failed to save tenant settings:', err);
+      alert('Προέκυψε σφάλμα κατά την αποθήκευση στο Dexie.');
+    } finally {
+      this.isSaving.set(false);
+      this.cdr.markForCheck();
+    }
+  }
 
   public get quotaUsagePercentage(): number {
     const max = Number(this.form.get('maxMonthlyDocuments')?.value);

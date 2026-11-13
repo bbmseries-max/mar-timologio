@@ -58,6 +58,12 @@ export const routes: Routes = [
           ),
         title: 'Ρυθμίσεις — Maranth Hub',
       },
+      {
+    path: 'help',
+    loadComponent: () =>
+      import('./features/help/help.component').then((m) => m.HelpComponent),
+    title: 'Βοήθεια & Οδηγός Χρήσης | Maranth Hub',
+  },
     ],
   },
   {
