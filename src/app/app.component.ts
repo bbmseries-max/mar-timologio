@@ -198,8 +198,34 @@ import { EnvironmentBannerComponent } from '@features/invoices/invoice-builder/e
           <router-outlet></router-outlet>
         </main>
 
-        <footer class="border-t border-slate-200/60 py-6 text-center text-xs text-slate-400 bg-white/50 no-print">
-          <p>Maranth Hub Multi-Tenant Platform &bull; AADE myDATA v1.0.8 &bull; Terms of Service Enforced</p>
+        <footer class="border-t border-slate-200/80 py-6 px-4 text-xs text-slate-500 bg-white/80 backdrop-blur-xs no-print">
+          <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 text-center sm:text-left">
+              <span class="font-semibold text-slate-700">&copy; 2026 MARANTH Software Systems. All rights reserved.</span>
+              <span class="hidden sm:inline text-slate-300">&bull;</span>
+              <span class="text-[11px] text-slate-400 font-mono">AADE myDATA v1.0.8</span>
+            </div>
+
+            <nav aria-label="Νομικές Πληροφορίες" class="flex items-center gap-4 font-semibold">
+              <a
+                href="https://www.maranth.gr/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-slate-600 hover:text-indigo-600 underline-offset-4 hover:underline transition"
+              >
+                Πολιτική Απορρήτου (GDPR)
+              </a>
+              <span class="text-slate-300">|</span>
+              <a
+                href="https://www.maranth.gr/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-slate-600 hover:text-indigo-600 underline-offset-4 hover:underline transition"
+              >
+                Όροι Χρήσης
+              </a>
+            </nav>
+          </div>
         </footer>
       </div>
     } @else {

@@ -18,7 +18,7 @@ import { Subject } from 'rxjs';
 import { GsisLookupService, GsisCompanyRecord } from '@core/services/gsis-lookup.service';
 import { takeUntil, debounceTime } from 'rxjs/operators';
 import { MyDataService } from '@core/services/mydata.service';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import {
   FormArray,
@@ -1984,6 +1984,13 @@ private async handleInvoiceTypeDefaults(docType: string): Promise<void> {
       }, { emitEvent: false });
       break;
   }
+}
+
+public goToArchive(id: string | number, mark: string | number): void {
+  this.completedInvoice.set(null);
+  this.router.navigate(['/invoices'], {
+    queryParams: { createdId: String(id), mark: String(mark) },
+  });
 }
 
 }

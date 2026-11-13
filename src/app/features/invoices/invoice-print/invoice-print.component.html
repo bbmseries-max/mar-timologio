@@ -288,10 +288,10 @@
 
       <div class="py-2 border-b border-dashed border-slate-400 space-y-0.5 text-[10px]">
         <div class="font-bold text-center uppercase">{{ getDocTitle(invoice().invoiceType) }}</div>
-        <div class="flex justify-between">
-          <span>ΣΕΙΡΑ/ΑΡ.: {{ invoice().series }} - {{ invoice().documentNumber }}</span>
-          <span>{{ invoice().issueDate }}</span>
-        </div>
+        <div class="flex items-center justify-between gap-2 text-xs">
+  <span>ΣΕΙΡΑ/ΑΡ.: <strong>{{ invoice().series }} - {{ invoice().documentNumber }}</strong></span>
+  <span>ΗΜ/ΝΙΑ: <strong>{{ invoice().issueDate }}</strong></span>
+</div>
         @if (isRetailDoc(invoice().invoiceType)) {
           <div>ΠΕΛΑΤΗΣ: {{ invoice().customer.legalName || 'ΛΙΑΝΙΚΗ' }}</div>
         } @else {
