@@ -39,6 +39,11 @@ import {
   VatRateCategory,
   InvoiceLineItem,
 } from '@core/models/aade.models';
+import {
+  EU_COUNTRIES,
+  NON_EU_COUNTRIES,
+  isKnownMyDataCountry,
+} from '../../../core/models/country.model';
 import { Product } from '@core/models/database.models';
 import { ContractAgreementComponent, ContractCustomerData } from '../../contracts/contract-agreement.component';
 import { AadeSerializerService } from '@core/services/aade-serializer.service';
@@ -78,6 +83,10 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   public readonly gsisLoading = signal<boolean>(false);
   public readonly gsisError = signal<string | null>(null);
   private readonly router = inject(Router);
+
+  public readonly euCountries = EU_COUNTRIES;
+  public readonly nonEuCountries = NON_EU_COUNTRIES;
+  public customCountryMode = signal<boolean>(false);
 
   public readonly currentDraftId = signal<string | null>(crypto.randomUUID());
   public readonly autoSaveStatus = signal<string>('Έτοιμο');
@@ -1976,4 +1985,5 @@ private async handleInvoiceTypeDefaults(docType: string): Promise<void> {
       break;
   }
 }
+
 }
