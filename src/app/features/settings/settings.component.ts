@@ -308,6 +308,49 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
         </div>
       </form>
     </div>
+    <section class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
+    <div>
+      <h2 class="text-sm font-black text-[#0f294a] uppercase tracking-tight flex items-center gap-2">
+        <span>💾</span>
+        <span>Αντίγραφα Ασφαλείας (Backup &amp; Restore)</span>
+      </h2>
+      <p class="text-xs text-slate-500 mt-1">
+        Εξαγωγή και επαναφορά όλων των τοπικών δεδομένων (Παραστατικά, Πελάτες, Είδη, Ρυθμίσεις) σε αρχείο JSON.
+      </p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2.5">
+      <button
+        type="button"
+        (click)="onDownloadBackup()"
+        class="px-4 py-2.5 rounded-xl bg-[#0f294a] hover:bg-blue-900 text-white text-xs font-bold shadow-2xs transition cursor-pointer flex items-center gap-1.5"
+      >
+        <span>⬇️</span>
+        <span>Λήψη Backup (.json)</span>
+      </button>
+
+      <label
+        class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#0f294a] border border-slate-300 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+      >
+        <span>⬆️</span>
+        <span>Επαναφορά από JSON</span>
+        <input
+          type="file"
+          accept=".json,application/json"
+          (change)="onRestoreBackupFile($event)"
+          class="hidden"
+        />
+      </label>
+    </div>
+  </div>
+
+  @if (backupStatus()) {
+    <div class="text-xs font-semibold px-3.5 py-2.5 rounded-xl bg-blue-50 text-blue-900 border border-blue-200">
+      {{ backupStatus() }}
+    </div>
+  }
+</section>
   `
 })
 export class SettingsComponent implements OnInit {
@@ -320,6 +363,7 @@ export class SettingsComponent implements OnInit {
 
   public readonly isSaving = signal<boolean>(false);
   public readonly savedNotification = signal<string | null>(null);
+  public readonly backupStatus = signal<string | null>(null);
 
   public readonly form = this.fb.group({
     afm: [''],
@@ -535,4 +579,53 @@ export class SettingsComponent implements OnInit {
     this.isResettingDemo.set(false);
   }
 }
+
+public async onDownloadBackup(): Promise<void> {
+    try {
+      const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
+      const jsonContent = await this.db.exportTenantBackup(tenantId);
+      const dateTag = new Date().toISOString().slice(0, 10);
+      const fileName = `maranth-backup-${tenantId}-${dateTag}.json`;
+
+      const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      anchor.click();
+      URL.revokeObjectURL(url);
+
+      this.backupStatus.set(`✓ Εξήχθη επιτυχώς: ${fileName}`);
+    } catch (err: any) {
+      this.backupStatus.set(`✕ Σφάλμα εξαγωγής: ${err?.message || 'Άγνωστο σφάλμα'}`);
+    }
+  }
+
+  public async onRestoreBackupFile(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const confirmed = confirm(
+      `Θέλετε σίγουρα να επαναφέρετε τα δεδομένα από το αρχείο "${file.name}";\nΤα υπάρχοντα παραστατικά, πελάτες και είδη με το ίδιο ID θα ενημερωθούν.`
+    );
+    if (!confirmed) {
+      input.value = '';
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
+      const counts = await this.db.restoreTenantBackup(tenantId, text);
+
+      this.backupStatus.set(
+        `✓ Επαναφορά ολοκληρώθηκε (${counts.invoices} παραστατικά, ${counts.customers} πελάτες, ${counts.products} είδη).`
+      );
+    } catch (err: any) {
+      this.backupStatus.set(`✕ Αποτυχία επαναφοράς: ${err?.message || 'Μη έγκυρο αρχείο JSON'}`);
+    } finally {
+      input.value = '';
+    }
+  }
 }

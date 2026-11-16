@@ -372,4 +372,68 @@ export class LocalDbService extends Dexie {
     await this.invoices.bulkDelete(idsToDelete);
     return idsToDelete.length;
   }
+
+  public async exportTenantBackup(tenantId: string): Promise<string> {
+    const [settings, invoices, customers, products] = await Promise.all([
+      this.settings.where('tenantId').equals(tenantId).toArray(),
+      this.invoices.where('tenantId').equals(tenantId).toArray(),
+      this.customers.where('tenantId').equals(tenantId).toArray(),
+      this.products.where('tenantId').equals(tenantId).toArray(),
+    ]);
+
+    const backupPayload = {
+      app: 'Maranth Pro ERP',
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      tenantId,
+      data: {
+        settings,
+        invoices,
+        customers,
+        products,
+      },
+    };
+
+    return JSON.stringify(backupPayload, null, 2);
+  }
+
+  public async restoreTenantBackup(
+    tenantId: string,
+    rawJson: string
+  ): Promise<{ invoices: number; customers: number; products: number }> {
+    const parsed = JSON.parse(rawJson);
+    if (!parsed?.data || typeof parsed.data !== 'object') {
+      throw new Error('Μη έγκυρο αρχείο αντιγράφου ασφαλείας Maranth Pro.');
+    }
+
+    const scopeToTenant = <T extends Record<string, any>>(rows: unknown): T[] =>
+      Array.isArray(rows)
+        ? rows.map((row) => ({ ...row, tenantId }))
+        : [];
+
+    const settings = scopeToTenant(parsed.data.settings);
+    const invoices = scopeToTenant(parsed.data.invoices);
+    const customers = scopeToTenant(parsed.data.customers);
+    const products = scopeToTenant(parsed.data.products);
+
+    await this.transaction(
+      'rw',
+      this.settings,
+      this.invoices,
+      this.customers,
+      this.products,
+      async () => {
+        if (settings.length > 0) await this.settings.bulkPut(settings as any);
+        if (invoices.length > 0) await this.invoices.bulkPut(invoices as any);
+        if (customers.length > 0) await this.customers.bulkPut(customers as any);
+        if (products.length > 0) await this.products.bulkPut(products as any);
+      }
+    );
+
+    return {
+      invoices: invoices.length,
+      customers: customers.length,
+      products: products.length,
+    };
+  }
 }
