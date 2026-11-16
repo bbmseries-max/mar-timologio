@@ -476,11 +476,14 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       });
 
     this.invoiceForm.valueChanges
-      .pipe(takeUntil(this.destroy$), debounceTime(400))
-      .subscribe(() => {
-        this.autoSaveStatus.set('Αποθήκευση...');
-        this.debouncedSave();
-      });
+  .pipe(takeUntil(this.destroy$), debounceTime(400))
+  .subscribe(() => {
+    if (this.completedInvoice() || this.autoSaveStatus() === 'Διαβίβαση σε εξέλιξη...') {
+      return;
+    }
+    this.autoSaveStatus.set('Αποθήκευση...');
+    this.debouncedSave();
+  });
   }
 
   private optionalAfmValidator() {
@@ -1015,6 +1018,9 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   private saveTimeout?: any;
 
   private debouncedSave(): void {
+    if (this.completedInvoice() || this.autoSaveStatus() === 'Διαβίβαση σε εξέλιξη...') {
+      return;
+    }
     clearTimeout(this.saveTimeout);
     this.saveTimeout = setTimeout(async () => {
       await this.persistDraft();
@@ -1422,15 +1428,35 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     try {
       this.autoSaveStatus.set('Διαβίβαση σε εξέλιξη...');
 
+      const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
+      const cleanSeries = (invoice.series || 'DEV').trim().toUpperCase();
+      const cleanDocNum = Number(invoice.documentNumber) || 1;
+
+      // 1. Resolve the exact draft ID ONCE before calling AADE so both success & failure update the same row
+      let resolvedId: any =
+        invoice.id != null
+          ? invoice.id
+          : this.currentDraftId() || null;
+
+      if (!resolvedId) {
+        const autoSavedDraft = await this.db.invoices
+          .where('tenantId')
+          .equals(tenantId)
+          .filter(
+            (inv: any) =>
+              (inv.series || '').trim().toUpperCase() === cleanSeries &&
+              Number(inv.documentNumber) === cleanDocNum &&
+              !inv.mark &&
+              inv.transmissionStatus === 'DRAFT'
+          )
+          .first();
+
+        resolvedId = autoSavedDraft?.id || crypto.randomUUID();
+      }
+
       const result = await this.fiscalDispatcher.transmit(invoice);
 
       if (result.success && result.mark) {
-        // 1. Keep exact key type (number or string) so .put() updates the original draft row instead of creating a duplicate
-        const invoiceId: any =
-          invoice.id != null
-            ? invoice.id
-            : this.currentDraftId() || crypto.randomUUID();
-
         const rawResult = result as any;
         const officialUid: string = result.uid || rawResult.invoiceUid || '';
         const officialQr: string =
@@ -1441,14 +1467,14 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
         const safeCustomerAfm = invoice.customerAfm || formRaw.customer?.afm || '';
         const safeCustomerName = invoice.customerName || formRaw.customer?.legalName || '';
 
-        const existingRecord = await this.db.invoices.get(invoiceId);
+        const existingRecord = await this.db.invoices.get(resolvedId);
 
         const finalizedInvoice: LocalInvoiceRecord = {
           ...(existingRecord || invoice),
-          id: invoiceId,
-          tenantId: this.auth.currentTenantId() || 'tenant_minimarket',
-          series: invoice.series || 'DEV',
-          documentNumber: Number(invoice.documentNumber) || 1,
+          id: resolvedId,
+          tenantId,
+          series: cleanSeries,
+          documentNumber: cleanDocNum,
           issueDate: invoice.issueDate || new Date().toISOString().split('T')[0],
           invoiceType: invoice.invoiceType || '1.1',
           customerAfm: safeCustomerAfm,
@@ -1473,23 +1499,23 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
         // Remove any lingering DRAFT duplicate for the same series & documentNumber
         await this.db.invoices
           .where('tenantId')
-          .equals(finalizedInvoice.tenantId)
+          .equals(tenantId)
           .filter(
             (inv: any) =>
-              inv.id !== finalizedInvoice.id &&
-              inv.series === finalizedInvoice.series &&
-              inv.documentNumber === finalizedInvoice.documentNumber &&
+              inv.id !== resolvedId &&
+              (inv.series || '').trim().toUpperCase() === cleanSeries &&
+              Number(inv.documentNumber) === cleanDocNum &&
               !inv.mark &&
               inv.transmissionStatus === 'DRAFT'
           )
           .delete();
 
-        // 2. Prevent any debounced auto-save from overwriting this transmitted invoice back to DRAFT
+        // Prevent any debounced auto-save from overwriting this transmitted invoice back to DRAFT
         this.invoiceForm.markAsPristine();
         this.autoSaveStatus.set(`Διαβιβάστηκε (MARK: ${result.mark})`);
 
         this.completedInvoice.set({
-          id: String(invoiceId),
+          id: String(resolvedId),
           series: finalizedInvoice.series,
           documentNumber: finalizedInvoice.documentNumber,
           mark: String(result.mark),
@@ -1500,15 +1526,11 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
           qrUrl: officialQr,
           invoiceType: finalizedInvoice.invoiceType,
         });
-
       } else {
-        const invoiceId = invoice.id != null ? String(invoice.id) : null;
-        if (invoiceId != null) {
-          await this.db.invoices.update(invoiceId, {
-            transmissionStatus: 'FAILED',
-            updatedAt: Date.now(),
-          });
-        }
+        await this.db.invoices.update(resolvedId, {
+          transmissionStatus: 'FAILED',
+          updatedAt: Date.now(),
+        });
         this.autoSaveStatus.set(`Αποτυχία: ${result.error || 'Σφάλμα διαβίβασης'}`);
         alert(`Απόρριψη διαβίβασης:\n${result.error || 'Άγνωστο σφάλμα επικύρωσης'}`);
       }
