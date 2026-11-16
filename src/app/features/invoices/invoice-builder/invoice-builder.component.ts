@@ -18,15 +18,13 @@ import { Subject } from 'rxjs';
 import { GsisLookupService, GsisCompanyRecord } from '@core/services/gsis-lookup.service';
 import { takeUntil, debounceTime } from 'rxjs/operators';
 import { MyDataService } from '@core/services/mydata.service';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import {
   FormArray,
   FormBuilder,
   ReactiveFormsModule,
   Validators,
-  AbstractControl,
-  ValidationErrors,
 } from '@angular/forms';
 
 import { greekAfmValidator, isValidGreekAfm } from '@core/validators/afm.validator';
@@ -42,12 +40,9 @@ import {
 import {
   EU_COUNTRIES,
   NON_EU_COUNTRIES,
-  isKnownMyDataCountry,
 } from '../../../core/models/country.model';
-import { Product } from '@core/models/database.models';
+import { Product, LocalInvoiceRecord } from '@core/models/database.models';
 import { ContractAgreementComponent, ContractCustomerData } from '../../contracts/contract-agreement.component';
-import { AadeSerializerService } from '@core/services/aade-serializer.service';
-import { LocalInvoiceRecord } from '@core/models/database.models';
 import { InvoicePrintComponent, PrintableInvoiceData } from '../invoice-print/invoice-print.component';
 import { ExternalDocumentHandover } from '@core/models/handover.model';
 
@@ -63,26 +58,25 @@ import { ExternalDocumentHandover } from '@core/models/handover.model';
     EnvironmentBannerComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  templateUrl: `./invoice-builder.component.html`
+  templateUrl: `./invoice-builder.component.html`,
 })
 export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   @ViewChild(InvoicePrintComponent) printComponent?: InvoicePrintComponent;
   private readonly fb = inject(FormBuilder);
   private readonly myData = inject(MyDataService);
   private readonly fiscalDispatcher = inject(FiscalDispatcherService);
-  private readonly serializer = inject(AadeSerializerService);
-  public readonly isSubmitting = signal<boolean>(false);
   private readonly db = inject(LocalDbService);
   public readonly auth = inject(AuthTenantService);
   private readonly cartBridge = inject(CartBridgeService);
   private readonly gsisService = inject(GsisLookupService);
   private readonly route = inject(ActivatedRoute);
-  private readonly destroy$ = new Subject<void>();
+  private readonly router = inject(Router);
   private readonly tenantIntegration = inject(TenantIntegrationService);
+  private readonly destroy$ = new Subject<void>();
 
+  public readonly isSubmitting = signal<boolean>(false);
   public readonly gsisLoading = signal<boolean>(false);
   public readonly gsisError = signal<string | null>(null);
-  private readonly router = inject(Router);
 
   public readonly euCountries = EU_COUNTRIES;
   public readonly nonEuCountries = NON_EU_COUNTRIES;
@@ -98,7 +92,6 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   public readonly isSearching = signal<boolean>(false);
   private lastConsumedHandoverKey: string | null = null;
   public showTypeInfo = signal<boolean>(false);
- 
 
   private handoverConsumed = false;
   public handoverReceived = false;
@@ -119,7 +112,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       return {
         totalNetValue: 0,
         totalVatAmount: 0,
-        totalGrossValue: 0
+        totalGrossValue: 0,
       };
     }
 
@@ -133,7 +126,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       const discount = Number(line.discountPercentage) || 0;
 
       const baseAmount = qty * price;
-      const net = baseAmount - (baseAmount * (discount / 100));
+      const net = baseAmount - baseAmount * (discount / 100);
 
       const vatCat = Number(line.vatRateCategory) || 1;
       let vatPct = 24;
@@ -157,12 +150,11 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     return {
       totalNetValue: totalNet,
       totalVatAmount: totalVat,
-      totalGrossValue: totalGross
+      totalGrossValue: totalGross,
     };
   });
 
   public readonly selectedCustomerForContract = signal<ContractCustomerData | null>(null);
-
   public readonly showPrintModal = signal<boolean>(false);
   public readonly printableData = signal<PrintableInvoiceData | null>(null);
 
@@ -171,6 +163,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
 
   public readonly invoiceForm = this.fb.group({
     series: ['A', Validators.required],
+    correlatedMark: [''],
     documentNumber: [1, [Validators.required, Validators.min(1)]],
     issueDate: [new Date().toISOString().substring(0, 10), Validators.required],
     invoiceType: ['1.1', Validators.required],
@@ -249,7 +242,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
 
         this.invoiceForm.patchValue({
           invoiceType: docType,
-          series: docType === '9.3' ? 'ΔΑ' : (this.invoiceForm.get('series')?.value || 'A')
+          series: docType === '9.3' ? 'ΔΑ' : this.invoiceForm.get('series')?.value || 'A',
         });
 
         if (docType === '9.3') {
@@ -270,7 +263,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
               number: m.addressTo?.number ?? null,
               postalCode: m.addressTo?.postalCode ?? null,
               city: m.addressTo?.city ?? null,
-            }
+            },
           });
         }
 
@@ -284,7 +277,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
             street: party.address?.street ?? '',
             number: party.address?.number ?? '',
             postalCode: party.address?.postalCode ?? '',
-            city: party.address?.city ?? ''
+            city: party.address?.city ?? '',
           });
         }
 
@@ -321,7 +314,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
 
   public checkFormValidity(): void {
     const getInvalidControls = (formGroup: any, parentKey = ''): void => {
-      Object.keys(formGroup.controls).forEach(key => {
+      Object.keys(formGroup.controls).forEach((key) => {
         const control = formGroup.get(key);
         const fullPath = parentKey ? `${parentKey}.${key}` : key;
         if (control?.invalid) {
@@ -344,26 +337,23 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     const currentAfm = this.auth.currentTenantAfm();
     this.cartBridge.checkUrlPayload();
 
-    this.cartBridge.cart$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((handover) => {
-        if (!handover) return;
-        const key = String(
-          (handover as any).messageId ||
-            (handover as any).correlationId ||
-            JSON.stringify((handover as any).items || (handover as any).lines || '')
-        );
-        if (this.lastConsumedHandoverKey === key) return;
-        this.lastConsumedHandoverKey = key;
+    this.cartBridge.cart$.pipe(takeUntil(this.destroy$)).subscribe((handover) => {
+      if (!handover) return;
+      const key = String(
+        (handover as any).messageId ||
+          (handover as any).correlationId ||
+          JSON.stringify((handover as any).items || (handover as any).lines || '')
+      );
+      if (this.lastConsumedHandoverKey === key) return;
+      this.lastConsumedHandoverKey = key;
 
-        this.applyIncomingHandover(handover);
-        this.cartBridge.clear();
-        if (typeof (this.tenantIntegration as any).clearPending === 'function') {
-          (this.tenantIntegration as any).clearPending();
-        }
-      });
+      this.applyIncomingHandover(handover);
+      this.cartBridge.clear();
+      if (typeof (this.tenantIntegration as any).clearPending === 'function') {
+        (this.tenantIntegration as any).clearPending();
+      }
+    });
 
-    // 3. Fallback check if TenantIntegrationService was populated externally before mount
     const pending = this.tenantIntegration.pendingHandover();
     if (pending) {
       const key = String(
@@ -384,11 +374,9 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.linesArray.valueChanges
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => {
-        this.syncLines();
-      });
+    this.linesArray.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.syncLines();
+    });
 
     const currentTenantId = this.auth.currentTenantId();
     let tenantDefaultSeries = 'Α';
@@ -406,9 +394,6 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       this.route.snapshot.queryParamMap.get('id');
 
     const queryDocType = this.route.snapshot.queryParamMap.get('type');
-
-    this.cartBridge.checkUrlPayload();
-
     let isRestoredDraft = false;
 
     if (this.tenantIntegration.pendingHandover() && !this.handoverConsumed) {
@@ -417,7 +402,6 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       this.applyIncomingHandover(handover);
       this.tenantIntegration.clearPending();
     } else if (targetDraftId) {
-      // Support both string UUID and numeric Dexie IDs
       let draft = await this.db.getInvoiceById(targetDraftId);
       if (!draft && !isNaN(Number(targetDraftId))) {
         draft = await this.db.getInvoiceById(Number(targetDraftId) as any);
@@ -442,7 +426,6 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     this.updateMovementDocState(activeType);
     this.updateCustomerValidation(activeType);
 
-    // Only auto-seed issuer loading address & next AA if NOT restoring an existing draft
     if (!isRestoredDraft) {
       if (['9.1', '9.2', '9.3', '1.2'].includes(activeType)) {
         await this.populateIssuerLoadingAddress();
@@ -476,29 +459,19 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       });
 
     this.invoiceForm.valueChanges
-  .pipe(takeUntil(this.destroy$), debounceTime(400))
-  .subscribe(() => {
-    if (this.completedInvoice() || this.autoSaveStatus() === 'Διαβίβαση σε εξέλιξη...') {
-      return;
-    }
-    this.autoSaveStatus.set('Αποθήκευση...');
-    this.debouncedSave();
-  });
-  }
-
-  private optionalAfmValidator() {
-    return (control: AbstractControl): ValidationErrors | null => {
-      const val = (control.value || '').trim();
-      if (!val) {
-        return null;
-      }
-      return greekAfmValidator()(control);
-    };
+      .pipe(takeUntil(this.destroy$), debounceTime(400))
+      .subscribe(() => {
+        if (this.completedInvoice() || this.autoSaveStatus() === 'Διαβίβαση σε εξέλιξη...') {
+          return;
+        }
+        this.autoSaveStatus.set('Αποθήκευση...');
+        this.debouncedSave();
+      });
   }
 
   public async populateIssuerLoadingAddress(): Promise<void> {
     const currentTenantId = this.auth.currentTenantId() || 'tenant_minimarket';
-    
+
     let s: any = null;
     try {
       if ((this.db as any).settings) {
@@ -529,7 +502,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     ).trim();
 
     const rawNum = s?.number || s?.address?.number || tenantFiscal?.number || tenantFiscal?.address?.number || '11';
-    const number = (rawNum && rawNum !== '0') ? String(rawNum).trim() : '11';
+    const number = rawNum && rawNum !== '0' ? String(rawNum).trim() : '11';
 
     const postalCode = (
       s?.postalCode ||
@@ -554,25 +527,24 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
 
     const addressFromGroup = this.invoiceForm.get('movement.addressFrom');
     if (addressFromGroup) {
-      addressFromGroup.patchValue({
-        street,
-        number,
-        postalCode,
-        city,
-      }, { emitEvent: true });
-
-      addressFromGroup.markAsDirty();
+      addressFromGroup.patchValue(
+        { street, number, postalCode, city },
+        { emitEvent: false }
+      );
       addressFromGroup.updateValueAndValidity({ emitEvent: false });
     }
   }
 
   public async onSaveDraftManually(): Promise<void> {
-    if (this.completedInvoice()) return; // Guard: never overwrite an already-transmitted invoice
+    if (this.completedInvoice()) return;
 
     try {
       const tenantId = this.auth?.currentTenantId?.() || 'tenant_minimarket';
       const formVal: any = this.invoiceForm.getRawValue();
       const series = (formVal.series || 'DEV').trim().toUpperCase();
+      const mergedCorrelatedMark = String(
+        formVal.correlatedMark || formVal.movement?.correlatedMark || ''
+      ).trim();
 
       const existingDraft = await (this.db as any).invoices
         .where('tenantId')
@@ -586,7 +558,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
         .first();
 
       const draftId = existingDraft?.id || this.currentDraftId() || crypto.randomUUID();
-      const nextDocNum = existingDraft?.documentNumber || await (this.db as any).getNextDocumentNumber(tenantId, series);
+      const nextDocNum = existingDraft?.documentNumber || (await (this.db as any).getNextDocumentNumber(tenantId, series));
 
       const draftRecord: any = {
         ...formVal,
@@ -602,6 +574,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
         transmissionStatus: 'DRAFT',
         payloadJson: JSON.stringify({
           ...formVal,
+          correlatedMark: mergedCorrelatedMark || undefined,
           lines: this.lineItemsSignal(),
         }),
         updatedAt: Date.now(),
@@ -609,7 +582,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       };
 
       await (this.db as any).invoices.put(draftRecord);
-      this.currentDraftId.set(draftId); // <-- Bind the draft ID so Transmit overwrites this exact row!
+      this.currentDraftId.set(draftId);
       this.autoSaveStatus.set('Αποθηκεύτηκε ως πρόχειρο!');
     } catch (err: any) {
       console.error('Error saving manual draft:', err);
@@ -624,9 +597,10 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     }
 
     const tenantId = this.auth?.currentTenantId?.() || 'tenant_minimarket';
-    let settings: any = typeof (this.db as any).getSettingsForTenant === 'function'
-      ? await (this.db as any).getSettingsForTenant(tenantId)
-      : await (this.db as any).getSettings?.(tenantId);
+    let settings: any =
+      typeof (this.db as any).getSettingsForTenant === 'function'
+        ? await (this.db as any).getSettingsForTenant(tenantId)
+        : await (this.db as any).getSettings?.(tenantId);
 
     if (!settings?.afm) {
       const all = await (this.db as any).settings?.toArray?.();
@@ -658,7 +632,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
         email: settings?.email || '',
       },
       customer: {
-        id: (custRaw as any)?.id || 'cust-1',
+        id: custRaw?.id || 'cust-1',
         legalName: custRaw.legalName || '—',
         afm: custRaw.afm || '—',
         doy: custRaw.doy || '—',
@@ -703,6 +677,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    clearTimeout(this.saveTimeout);
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -713,7 +688,17 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       this.currentDraftId.set(draft.id == null ? null : String(draft.id));
 
       this.invoiceForm.enable({ emitEvent: false });
-      this.invoiceForm.patchValue(payload, { emitEvent: false });
+      this.invoiceForm.patchValue(
+        {
+          ...payload,
+          correlatedMark:
+            payload.correlatedMark ||
+            (draft as any).correlatedMark ||
+            payload.movement?.correlatedMark ||
+            '',
+        },
+        { emitEvent: false }
+      );
 
       this.linesArray.clear();
       if (Array.isArray(payload.lines) && payload.lines.length > 0) {
@@ -725,13 +710,13 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
             this.fb.group({
               description: [l.description || '', Validators.required],
               quantity: [l.quantity ?? 1, [Validators.required, Validators.min(0.01)]],
-              unitPrice: [isDeltio ? 0 : (l.unitPrice ?? 0), [Validators.required, Validators.min(0)]],
+              unitPrice: [isDeltio ? 0 : l.unitPrice ?? 0, [Validators.required, Validators.min(0)]],
               measurementUnit: [l.measurementUnit ?? 1, Validators.required],
               discountPercentage: [l.discountPercentage || 0],
-              netValue: [{ value: isDeltio ? 0 : (l.netValue ?? 0), disabled: true }],
-              vatRateCategory: [isDeltio ? 8 : (l.vatRateCategory || 1)],
-              vatAmount: [{ value: isDeltio ? 0 : (l.vatAmount ?? 0), disabled: true }],
-              totalValue: [{ value: isDeltio ? 0 : (l.totalValue ?? 0), disabled: true }],
+              netValue: [{ value: isDeltio ? 0 : l.netValue ?? 0, disabled: true }],
+              vatRateCategory: [isDeltio ? 8 : l.vatRateCategory || 1],
+              vatAmount: [{ value: isDeltio ? 0 : l.vatAmount ?? 0, disabled: true }],
+              totalValue: [{ value: isDeltio ? 0 : l.totalValue ?? 0, disabled: true }],
             })
           );
         }
@@ -774,7 +759,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
         netValue: [{ value: this.isPureDispatch ? 0 : netValue, disabled: true }],
         vatRateCategory: [this.isPureDispatch ? 8 : vatCat],
         vatAmount: [{ value: this.isPureDispatch ? 0 : vatAmount, disabled: true }],
-        totalValue: [{ value: this.isPureDispatch ? 0 : totalValue, disabled: true }]
+        totalValue: [{ value: this.isPureDispatch ? 0 : totalValue, disabled: true }],
       });
 
       this.linesArray.push(lineGroup);
@@ -838,15 +823,13 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   }
 
   public setSupplierReturnPreset(): void {
-    const returnSeries = 'ΕΠΙΣΤΡ';
-
     this.invoiceForm.patchValue(
       {
         invoiceType: '9.3',
-        series: returnSeries,
+        series: 'ΕΠΙΣΤΡ',
         movement: {
           vehicleNumber: '',
-          movePurpose: 4,
+          movePurpose: 6,
           dispatchDateTime: new Date().toISOString().substring(0, 16),
         },
       },
@@ -916,12 +899,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
           addressToGroup.enable({ emitEvent: false });
         }
         addressToGroup.patchValue(
-          {
-            street,
-            number,
-            postalCode,
-            city,
-          },
+          { street, number, postalCode, city },
           { emitEvent: true }
         );
         addressToGroup.markAsDirty();
@@ -959,7 +937,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     const unitPrice = isDeltio ? 0 : Number(product.price || 0);
     const quantity = 1;
     const netValue = isDeltio ? 0 : Number((unitPrice * quantity).toFixed(2));
-    const vatRate = isDeltio ? 0 : (product.taxRate ?? 24);
+    const vatRate = isDeltio ? 0 : product.taxRate ?? 24;
     const vatAmount = isDeltio ? 0 : Number((netValue * (vatRate / 100)).toFixed(2));
     const totalValue = isDeltio ? 0 : Number((netValue + vatAmount).toFixed(2));
 
@@ -1045,10 +1023,13 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     const formVal = this.invoiceForm.getRawValue();
     const totals = this.computedTotals();
     const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
+    const mergedCorrelatedMark = String(
+      formVal.correlatedMark || formVal.movement?.correlatedMark || ''
+    ).trim();
 
     const record: LocalInvoiceRecord = {
       id: this.currentDraftId() || crypto.randomUUID(),
-      tenantId: tenantId,
+      tenantId,
       series: formVal.series || 'A',
       documentNumber: Number(formVal.documentNumber) || 1,
       issueDate: formVal.issueDate || new Date().toISOString().substring(0, 10),
@@ -1061,6 +1042,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       transmissionStatus: 'DRAFT',
       payloadJson: JSON.stringify({
         ...formVal,
+        correlatedMark: mergedCorrelatedMark || undefined,
         lines: this.lineItemsSignal(),
       }),
       updatedAt: Date.now(),
@@ -1083,6 +1065,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
 
     this.invoiceForm.reset({
       series: s.defaultSeries || 'Α',
+      correlatedMark: '',
       documentNumber: 1,
       issueDate: new Date().toISOString().substring(0, 10),
       invoiceType: '1.1',
@@ -1128,7 +1111,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     const row = this.fb.group({
       description: ['', Validators.required],
       quantity: [1, [Validators.required, Validators.min(0.01)]],
-      unitPrice: [isDeltio ? 0 : 0, [Validators.required, Validators.min(0)]],
+      unitPrice: [0, [Validators.required, Validators.min(0)]],
       measurementUnit: [1, Validators.required],
       discountPercentage: [0],
       netValue: [{ value: 0, disabled: true }],
@@ -1158,11 +1141,10 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     const vatCat = Number(line.get('vatRateCategory')?.value || 1);
 
     if (this.isPureDispatch) {
-      line.patchValue({
-        netValue: 0,
-        vatAmount: 0,
-        totalValue: 0,
-      }, { emitEvent: false });
+      line.patchValue(
+        { netValue: 0, vatAmount: 0, totalValue: 0 },
+        { emitEvent: false }
+      );
       return;
     }
 
@@ -1172,27 +1154,29 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     let rate = 0.24;
     if (vatCat === 2) rate = 0.13;
     else if (vatCat === 3) rate = 0.06;
-    else if (vatCat === 7 || vatCat === 8) rate = 0.00;
+    else if (vatCat === 7 || vatCat === 8) rate = 0.0;
 
     const vat = net * rate;
     const total = net + vat;
 
-    line.patchValue({
-      netValue: Number(net.toFixed(2)),
-      vatAmount: Number(vat.toFixed(2)),
-      totalValue: Number(total.toFixed(2)),
-    }, { emitEvent: false });
+    line.patchValue(
+      {
+        netValue: Number(net.toFixed(2)),
+        vatAmount: Number(vat.toFixed(2)),
+        totalValue: Number(total.toFixed(2)),
+      },
+      { emitEvent: false }
+    );
 
     this.recalculateInvoiceTotals();
   }
 
   public recalculateInvoiceTotals(): void {
     if (this.isPureDispatch) {
-      this.invoiceForm.get('totals')?.patchValue({
-        totalNetValue: 0,
-        totalVatAmount: 0,
-        totalGrossValue: 0,
-      }, { emitEvent: false });
+      this.invoiceForm.get('totals')?.patchValue(
+        { totalNetValue: 0, totalVatAmount: 0, totalGrossValue: 0 },
+        { emitEvent: false }
+      );
       return;
     }
 
@@ -1207,7 +1191,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       const discount = Number(line.discountPercentage) || 0;
 
       const baseGross = qty * price;
-      const net = baseGross - (baseGross * (discount / 100));
+      const net = baseGross - baseGross * (discount / 100);
 
       const vatCat = Number(line.vatRateCategory) || 1;
       let vatPct = 24;
@@ -1274,7 +1258,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       return {
         street: street || beforeZip,
         number: number || '1',
-        postalCode: postalCode,
+        postalCode,
         city: afterZip || '',
       };
     }
@@ -1313,7 +1297,8 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     this.gsisLoading.set(true);
     this.gsisError.set(null);
 
-    this.gsisService.lookupAfm(rawAfm)
+    this.gsisService
+      .lookupAfm(rawAfm)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (company: GsisCompanyRecord) => {
@@ -1340,7 +1325,9 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
           this.autoSaveStatus.set(
             company.source === 'LOCAL_CACHE'
               ? 'Ανακτήθηκε από τοπική μνήμη'
-              : (company.source === 'GSIS' ? 'Επαληθεύτηκε από ΑΑΔΕ' : 'Επαληθεύτηκε από EU VIES')
+              : company.source === 'GSIS'
+                ? 'Επαληθεύτηκε από ΑΑΔΕ'
+                : 'Επαληθεύτηκε από EU VIES'
           );
         },
         error: (err: any) => {
@@ -1402,14 +1389,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     const customerGroup = this.invoiceForm.get('customer');
     if (customerGroup) {
       customerGroup.patchValue(
-        {
-          legalName,
-          doy,
-          street,
-          number,
-          postalCode,
-          city,
-        } as any,
+        { legalName, doy, street, number, postalCode, city } as any,
         { emitEvent: true }
       );
       customerGroup.markAsDirty();
@@ -1432,11 +1412,8 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       const cleanSeries = (invoice.series || 'DEV').trim().toUpperCase();
       const cleanDocNum = Number(invoice.documentNumber) || 1;
 
-      // 1. Resolve the exact draft ID ONCE before calling AADE so both success & failure update the same row
       let resolvedId: any =
-        invoice.id != null
-          ? invoice.id
-          : this.currentDraftId() || null;
+        invoice.id != null ? invoice.id : this.currentDraftId() || null;
 
       if (!resolvedId) {
         const autoSavedDraft = await this.db.invoices
@@ -1487,16 +1464,17 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
           qrUrl: officialQr,
           providerSignature: result.providerSignature ?? undefined,
           transmissionStatus: 'TRANSMITTED',
-          payloadJson: invoice.payloadJson || JSON.stringify({
-            ...formRaw,
-            lines: this.lineItemsSignal(),
-          }),
+          payloadJson:
+            invoice.payloadJson ||
+            JSON.stringify({
+              ...formRaw,
+              lines: this.lineItemsSignal(),
+            }),
           updatedAt: Date.now(),
         };
 
         await this.db.invoices.put(finalizedInvoice);
 
-        // Remove any lingering DRAFT duplicate for the same series & documentNumber
         await this.db.invoices
           .where('tenantId')
           .equals(tenantId)
@@ -1510,7 +1488,6 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
           )
           .delete();
 
-        // Prevent any debounced auto-save from overwriting this transmitted invoice back to DRAFT
         this.invoiceForm.markAsPristine();
         this.autoSaveStatus.set(`Διαβιβάστηκε (MARK: ${result.mark})`);
 
@@ -1540,60 +1517,47 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     }
   }
 
-// invoice-builder.component.ts
-public async onPrintCompletedInvoice(): Promise<void> {
-  const completed = this.completedInvoice();
+  public async onPrintCompletedInvoice(): Promise<void> {
+    const completed = this.completedInvoice();
 
-  if (!completed) {
-    await this.router.navigate(['/invoices']);
-    return;
+    if (!completed) {
+      await this.router.navigate(['/invoices']);
+      return;
+    }
+
+    const targetId = String(completed.id ?? '').trim();
+    const targetMark = String(completed.mark ?? '').trim();
+
+    this.completedInvoice.set(null);
+
+    await this.router.navigate(['/invoices'], {
+      queryParams: {
+        createdId: targetId || targetMark,
+        mark: targetMark,
+      },
+    });
   }
 
-  // Extract values BEFORE resetting the signal
-  const targetId = String(completed.id ?? '').trim();
-  const targetMark = String(completed.mark ?? '').trim();
-
-  // Close the modal
-  this.completedInvoice.set(null);
-
-  // Navigate to archive with explicit query parameters
-  await this.router.navigate(['/invoices'], {
-    queryParams: {
-      createdId: targetId || targetMark,
-      mark: targetMark,
-    },
-  });
-}
-
   public async onStartNextInvoice(): Promise<void> {
-    // 1. Immediately dismiss modal
     this.completedInvoice.set(null);
 
     const tenantId = this.auth.currentTenantId();
     const series = this.invoiceForm.get('series')?.value || 'ΔΑ';
-    
-    // 2. Clear item lines and seed a fresh default line
+
     this.linesArray.clear();
     this.seedInitialLine();
 
-    // 3. Reset customer and movement blocks
     this.invoiceForm.get('customer')?.reset();
     this.invoiceForm.get('movement.addressTo')?.reset();
     this.invoiceForm.get('movement.vehicleNumber')?.reset();
-    
-    // 4. Reset correlated mark / notes if present
     this.invoiceForm.get('movement.correlatedMark')?.reset();
-    this.invoiceForm.get('notes')?.reset();
+    this.invoiceForm.get('correlatedMark')?.reset();
 
-    // 5. Update next document number from Dexie sequence
     if (tenantId) {
       const nextAa = await this.db.getNextDocumentNumber(tenantId, series);
       this.currentDraftId.set(crypto.randomUUID());
       this.invoiceForm.get('documentNumber')?.setValue(nextAa, { emitEvent: false });
     }
-
-    // 6. Recalculate totals to clean 0.00 state
-    this.computedTotals();
   }
 
   public readonly completedInvoice = signal<{
@@ -1612,7 +1576,7 @@ public async onPrintCompletedInvoice(): Promise<void> {
   private syncLines(): void {
     const isDeltio = this.isPureDispatch;
     const docType = String(this.currentDocType || '1.1').trim();
-    
+
     const isRetailGoods = docType === '11.1';
     const isRetailServices = docType === '11.2';
     const isWholesaleServices = docType === '2.1';
@@ -1643,7 +1607,7 @@ public async onPrintCompletedInvoice(): Promise<void> {
           netVal = Number(r.netValue);
         } else {
           const gross = qty * unitPr;
-          netVal = Number((gross - (gross * (discount / 100))).toFixed(2));
+          netVal = Number((gross - gross * (discount / 100)).toFixed(2));
         }
       }
 
@@ -1703,118 +1667,7 @@ public async onPrintCompletedInvoice(): Promise<void> {
     });
 
     this.lineItemsSignal.set(items);
-
-    const totalNet = items.reduce((sum, item) => sum + (Number(item.netValue) || 0), 0);
-    const totalVat = items.reduce((sum, item) => sum + (Number(item.vatAmount) || 0), 0);
-    const totalGross = items.reduce((sum, item) => sum + (Number(item.totalValue) || 0), 0);
-
-    const computedTotals = {
-      totalNetValue: Number(totalNet.toFixed(2)),
-      totalVatAmount: Number(totalVat.toFixed(2)),
-      totalGrossValue: Number(totalGross.toFixed(2)),
-    };
-
-    if ((this as any).totalsSignal) {
-      (this as any).totalsSignal.set(computedTotals);
-    }
-    if ((this as any).totals) {
-      (this as any).totals = computedTotals;
-    }
-    if (typeof (this as any).calculateTotals === 'function') {
-      (this as any).calculateTotals();
-    }
     this.recalculateInvoiceTotals();
-  }
-
-  private async openVerifiedPreview(
-    invoiceOrId: LocalInvoiceRecord | string,
-    mark: string,
-    uid?: string,
-    qrUrl?: string
-  ): Promise<void> {
-    let invoice: any = null;
-    if (typeof invoiceOrId === 'string') {
-      invoice = await this.db.invoices.get(invoiceOrId);
-    } else if (invoiceOrId?.id) {
-      invoice = (await this.db.invoices.get(String(invoiceOrId.id))) || invoiceOrId;
-    } else {
-      invoice = invoiceOrId;
-    }
-
-    const tenantId = this.auth?.currentTenantId?.() || 'tenant_minimarket';
-    let settings: any = typeof (this.db as any).getSettingsForTenant === 'function'
-      ? await (this.db as any).getSettingsForTenant(tenantId)
-      : await (this.db as any).getSettings?.(tenantId);
-
-    if (!settings?.afm) {
-      const all = await (this.db as any).settings?.toArray?.();
-      if (all && all.length > 0) settings = all[0];
-    }
-
-    let parsedPayload: any = {};
-    try {
-      parsedPayload = typeof invoice.payloadJson === 'string'
-        ? JSON.parse(invoice.payloadJson)
-        : invoice.payloadJson || {};
-    } catch {
-      parsedPayload = {};
-    }
-
-    const custRaw = parsedPayload.customer || invoice.customer || {};
-
-    const printablePayload: any = {
-      series: invoice.series || 'DEV',
-      documentNumber: Number(invoice.documentNumber) || 1,
-      issueDate: invoice.issueDate || new Date().toISOString().split('T')[0],
-      invoiceType: invoice.invoiceType || '1.1',
-      issuer: {
-        legalName: settings?.legalName || 'MARANTH MON IKE',
-        tradeName: settings?.companyName || settings?.legalName || 'MARANTH MON IKE',
-        afm: settings?.afm || '067424104',
-        doy: settings?.doy || 'ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ',
-        branch: Number(settings?.branch ?? 0),
-        address: {
-          street: settings?.street || 'ΒΑΡΔΟΥΝΙΩΤΗ',
-          number: settings?.number || '11',
-          postalCode: settings?.postalCode || '11522',
-          city: settings?.city || 'ΑΘΗΝΑ',
-        },
-        phone: settings?.phone || '',
-        email: settings?.email || '',
-      },
-      customer: {
-        id: custRaw.id || 'cust-1',
-        legalName: custRaw.legalName || invoice.customerName || 'ΙΔΙΩΤΗΣ / ΠΕΛΑΤΗΣ',
-        afm: custRaw.afm || invoice.customerAfm || '—',
-        doy: custRaw.doy || '—',
-        email: custRaw.email || '',
-        address: {
-          street: custRaw.street || '',
-          number: custRaw.number || '',
-          postalCode: custRaw.postalCode || '',
-          city: custRaw.city || '',
-        },
-      },
-      lines: parsedPayload.lines || this.lineItemsSignal(),
-      totals: {
-        totalNetValue: Number(invoice.totalNet ?? parsedPayload.totals?.totalNetValue ?? 0),
-        totalVatAmount: Number(invoice.totalVat ?? parsedPayload.totals?.totalVatAmount ?? 0),
-        totalWithheldAmount: 0,
-        totalFeesAmount: 0,
-        totalStampDutyAmount: 0,
-        totalOtherTaxesAmount: 0,
-        totalDeductionsAmount: 0,
-        totalGrossValue: Number(invoice.totalGross ?? parsedPayload.totals?.totalGrossValue ?? 0),
-      },
-      mark: mark || invoice.mark,
-      uid: uid || invoice.uid || '',
-      qrUrl: qrUrl || invoice.qrUrl || (mark ? `https://mydataapidev.aade.gr/TimologioQR/QRInfo?q=${mark}` : ''),
-      xmlPayload: invoice.xmlPayload || '',
-      movement: parsedPayload.movement || invoice.movement || undefined,
-    };
-
-    this.printableData.set(printablePayload);
-    this.showPrintModal.set(true);
   }
 
   public async onSaveAndSubmit(): Promise<void> {
@@ -1840,6 +1693,10 @@ public async onPrintCompletedInvoice(): Promise<void> {
       return;
     }
 
+    const mergedCorrelatedMark = String(
+      formRaw.correlatedMark || formRaw.movement?.correlatedMark || ''
+    ).trim();
+
     const invoiceRecord: LocalInvoiceRecord = {
       id: this.currentDraftId() || crypto.randomUUID(),
       tenantId: this.auth.currentTenantId() || 'tenant_minimarket',
@@ -1855,6 +1712,7 @@ public async onPrintCompletedInvoice(): Promise<void> {
       transmissionStatus: 'DRAFT',
       payloadJson: JSON.stringify({
         ...formRaw,
+        correlatedMark: mergedCorrelatedMark || undefined,
         lines: currentLines,
       }),
       createdAt: Date.now(),
@@ -1869,19 +1727,11 @@ public async onPrintCompletedInvoice(): Promise<void> {
     const selectElem = event.target as HTMLSelectElement;
     const purpose = Number(selectElem.value);
 
-    const isReturn = purpose === 4 || purpose === 6;
+    // Keep series & documentNumber untouched when changing movePurpose
+    this.invoiceForm.get('movement.movePurpose')?.setValue(purpose, { emitEvent: false });
 
-    if (isReturn) {
-      if (!this.invoiceForm.get('series')?.dirty) {
-        this.invoiceForm.get('series')?.setValue('ΕΠΙΣΤΡ', { emitEvent: false });
-        this.updateNextDocumentNumber();
-      }
-    } else {
-      if (this.invoiceForm.get('series')?.value === 'ΕΠΙΣΤΡ') {
-        const defaultSeries = this.isPureDispatch ? 'DEV' : 'A';
-        this.invoiceForm.get('series')?.setValue(defaultSeries, { emitEvent: false });
-        this.updateNextDocumentNumber();
-      }
+    const isReturn = purpose === 4 || purpose === 6;
+    if (!isReturn) {
       this.invoiceForm.get('movement.correlatedMark')?.setValue('', { emitEvent: false });
     }
   }
@@ -1893,10 +1743,7 @@ public async onPrintCompletedInvoice(): Promise<void> {
     const isRetail = type === '11.1' || type === '11.2';
     const isPureMovement = type === '9.1' || type === '9.2' || type === '9.3';
 
-    if (isRetail) {
-      afmCtrl?.clearValidators();
-      nameCtrl?.clearValidators();
-    } else if (isPureMovement) {
+    if (isRetail || isPureMovement) {
       afmCtrl?.clearValidators();
       nameCtrl?.clearValidators();
     } else {
@@ -1908,7 +1755,7 @@ public async onPrintCompletedInvoice(): Promise<void> {
     nameCtrl?.updateValueAndValidity({ emitEvent: false });
   }
 
-   private readonly selectedTypeCode = toSignal(
+  private readonly selectedTypeCode = toSignal(
     this.invoiceForm.get('invoiceType')!.valueChanges,
     { initialValue: this.invoiceForm.get('invoiceType')?.value || '1.1' }
   );
@@ -1917,127 +1764,151 @@ public async onPrintCompletedInvoice(): Promise<void> {
     const code = this.selectedTypeCode() || '1.1';
     return INVOICE_TYPE_GUIDES[code] || INVOICE_TYPE_GUIDES['1.1'];
   });
+
   public toggleTypeInfo(): void {
-    this.showTypeInfo.update(v => !v);
+    this.showTypeInfo.update((v) => !v);
   }
 
-  // 1. Add this helper method inside InvoiceBuilderComponent:
-private async handleInvoiceTypeDefaults(docType: string): Promise<void> {
-  const currentTenantId = this.auth.currentTenantId();
-  const myBusiness: any = currentTenantId ? await this.db.getSettings(currentTenantId) : null;
+  private async handleInvoiceTypeDefaults(docType: string): Promise<void> {
+    const currentTenantId = this.auth.currentTenantId();
+    const myBusiness: any = currentTenantId ? await this.db.getSettings(currentTenantId) : null;
 
-  const issuerStreet = myBusiness?.street || myBusiness?.address?.street || 'ΔΙΑΝΟΜΗ';
-  const issuerNumber = myBusiness?.number || myBusiness?.address?.number || '1';
-  const issuerZip    = myBusiness?.postalCode || myBusiness?.address?.postalCode || '11522';
-  const issuerCity   = myBusiness?.city || myBusiness?.address?.city || 'ΑΘΗΝΑ';
-  const tenantDefaultSeries = myBusiness?.defaultSeries || 'Α';
-  const nowIsoDatePrefix = new Date().toISOString().substring(0, 16);
+    const issuerStreet = myBusiness?.street || myBusiness?.address?.street || 'ΔΙΑΝΟΜΗ';
+    const issuerNumber = myBusiness?.number || myBusiness?.address?.number || '1';
+    const issuerZip = myBusiness?.postalCode || myBusiness?.address?.postalCode || '11522';
+    const issuerCity = myBusiness?.city || myBusiness?.address?.city || 'ΑΘΗΝΑ';
+    const tenantDefaultSeries = myBusiness?.defaultSeries || 'Α';
+    const nowIsoDatePrefix = new Date().toISOString().substring(0, 16);
 
-  // Strategy mapping for every myDATA document type
-  switch (docType) {
-    case '9.2': // Συγκεντρωτικό Δελτίο Διακίνησης (Aggregate Transport)
-      this.invoiceForm.patchValue({
-        customer: {
-          afm: '000000000',
-          legalName: 'ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΔΙΑΚΙΝΗΣΗ',
-          country: 'GR',
-          street: issuerStreet,
-          number: issuerNumber,
-          postalCode: issuerZip,
-          city: issuerCity,
-        },
-        series: 'ΣΔ',
-        movement: {
-          movePurpose: 8, // Διακίνηση / Ενδοδιακίνηση
-          dispatchDateTime: nowIsoDatePrefix,
+    switch (docType) {
+      case '9.2':
+        this.invoiceForm.patchValue(
+          {
+            customer: {
+              afm: '000000000',
+              legalName: 'ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΔΙΑΚΙΝΗΣΗ',
+              country: 'GR',
+              street: issuerStreet,
+              number: issuerNumber,
+              postalCode: issuerZip,
+              city: issuerCity,
+            },
+            series: 'ΣΔ',
+            movement: {
+              movePurpose: 8,
+              dispatchDateTime: nowIsoDatePrefix,
+            },
+          },
+          { emitEvent: false }
+        );
+        break;
+
+      case '9.1':
+        this.invoiceForm.patchValue(
+          {
+            series: 'ΔΑ',
+            movement: {
+              movePurpose: 1,
+              dispatchDateTime: nowIsoDatePrefix,
+            },
+          },
+          { emitEvent: false }
+        );
+        break;
+
+      case '9.3':
+        this.invoiceForm.patchValue(
+          {
+            series: 'ΔΕ',
+            movement: {
+              movePurpose: 1,
+              dispatchDateTime: nowIsoDatePrefix,
+            },
+          },
+          { emitEvent: false }
+        );
+        break;
+
+      case '11.1':
+        this.invoiceForm.patchValue(
+          {
+            series: 'ΑΛΠ',
+            customer: {
+              afm: '',
+              legalName: 'Πελάτης Λιανικής',
+              country: 'GR',
+            },
+          },
+          { emitEvent: false }
+        );
+        break;
+
+      case '11.2':
+        this.invoiceForm.patchValue(
+          {
+            series: 'ΑΠΥ',
+            customer: {
+              afm: '',
+              legalName: 'Πελάτης Λιανικής',
+              country: 'GR',
+            },
+          },
+          { emitEvent: false }
+        );
+        break;
+
+      case '1.2':
+        this.invoiceForm.patchValue(
+          {
+            series: 'ΤΕΠ',
+            customer: {
+              country: 'DE',
+            },
+          },
+          { emitEvent: false }
+        );
+        break;
+
+      case '2.1':
+        this.invoiceForm.patchValue(
+          {
+            series: 'ΤΠΥ',
+          },
+          { emitEvent: false }
+        );
+        break;
+
+      case '1.1':
+      default:
+        if (this.invoiceForm.get('customer.afm')?.value === '000000000') {
+          this.invoiceForm.patchValue(
+            {
+              customer: {
+                afm: '',
+                legalName: '',
+                street: '',
+                number: '',
+                postalCode: '',
+                city: '',
+              },
+            },
+            { emitEvent: false }
+          );
         }
-      }, { emitEvent: false });
-      break;
-
-    case '9.1': // Δελτίο Αποστολής (Specific Customer Delivery)
-      this.invoiceForm.patchValue({
-        series: 'ΔΑ',
-        movement: {
-          movePurpose: 1, // Πώληση
-          dispatchDateTime: nowIsoDatePrefix,
-        }
-      }, { emitEvent: false });
-      break;
-
-    case '9.3': // Δελτίο Αποστολής Συνοδευτικό / Επιστροφές (Supplementary/Return)
-      this.invoiceForm.patchValue({
-        series: 'ΔΕ',
-        movement: {
-          movePurpose: 4, // Επιστροφή / Διακίνηση
-          dispatchDateTime: nowIsoDatePrefix,
-        }
-      }, { emitEvent: false });
-      break;
-
-    case '11.1': // Απόδειξη Λιανικής Πώλησης (B2C Goods)
-      this.invoiceForm.patchValue({
-        series: 'ΑΛΠ',
-        customer: {
-          afm: '',
-          legalName: 'Πελάτης Λιανικής',
-          country: 'GR',
-        }
-      }, { emitEvent: false });
-      break;
-
-    case '11.2': // Απόδειξη Παροχής Υπηρεσιών (B2C Services)
-      this.invoiceForm.patchValue({
-        series: 'ΑΠΥ',
-        customer: {
-          afm: '',
-          legalName: 'Πελάτης Λιανικής',
-          country: 'GR',
-        }
-      }, { emitEvent: false });
-      break;
-
-    case '1.2': // Τιμολόγιο Πώλησης / Ενδοκοινοτική Παράδοση (Intra-Community B2B)
-      this.invoiceForm.patchValue({
-        series: 'ΤΕΠ',
-        customer: {
-          country: 'DE', // Default EU placeholder or let user choose
-        }
-      }, { emitEvent: false });
-      break;
-
-    case '2.1': // Τιμολόγιο Παροχής Υπηρεσιών (B2B Services)
-      this.invoiceForm.patchValue({
-        series: 'ΤΠΥ',
-      }, { emitEvent: false });
-      break;
-
-    case '1.1': // Τιμολόγιο Πώλησης (B2B Commercial Invoice)
-    default:
-      // Clear 000000000 if previously switched from 9.2
-      if (this.invoiceForm.get('customer.afm')?.value === '000000000') {
-        this.invoiceForm.patchValue({
-          customer: {
-            afm: '',
-            legalName: '',
-            street: '',
-            number: '',
-            postalCode: '',
-            city: '',
-          }
-        }, { emitEvent: false });
-      }
-      this.invoiceForm.patchValue({
-        series: tenantDefaultSeries || 'Α',
-      }, { emitEvent: false });
-      break;
+        this.invoiceForm.patchValue(
+          {
+            series: tenantDefaultSeries || 'Α',
+          },
+          { emitEvent: false }
+        );
+        break;
+    }
   }
-}
 
-public goToArchive(id: string | number, mark: string | number): void {
-  this.completedInvoice.set(null);
-  this.router.navigate(['/invoices'], {
-    queryParams: { createdId: String(id), mark: String(mark) },
-  });
-}
-
+  public goToArchive(id: string | number, mark: string | number): void {
+    this.completedInvoice.set(null);
+    this.router.navigate(['/invoices'], {
+      queryParams: { createdId: String(id), mark: String(mark) },
+    });
+  }
 }

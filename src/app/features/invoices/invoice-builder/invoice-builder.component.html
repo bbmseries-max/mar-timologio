@@ -397,6 +397,8 @@
         </h2>
       </div>
 
+
+
       <div class="space-y-3">
         <!-- Invoice Type Selector -->
         <div class="space-y-1.5">
@@ -419,9 +421,9 @@
     </button>
   </div>
 
-  <select
+<select
     formControlName="invoiceType"
-    class="w-full rounded-lg border-slate-300 text-xs px-3 py-2.5 border bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold text-slate-800 shadow-2xs cursor-pointer"
+    class="w-full rounded-lg border-slate-300 text-xs px-3 py-2.5 border bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-bold text-slate-800 shadow-2xs cursor-pointer"
   >
     <optgroup label="Τιμολόγηση &amp; Παροχή (B2B)">
       <option value="1.1">1.1 — Τιμολόγιο Πώλησης</option>
@@ -480,43 +482,66 @@
   }
 </div>
 
-        <!-- Series & Auto Number -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Σειρά</label>
-            <input
-              type="text"
-              formControlName="series"
-              placeholder="π.χ. ΤΠΥ"
-              class="w-full rounded-lg border-slate-300 text-sm px-3 py-2 border uppercase font-mono font-black text-slate-900 focus:ring-indigo-500 focus:border-indigo-500 shadow-2xs"
-            />
-          </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-slate-700">Αριθμός</label>
-              <span class="text-[10px] text-indigo-700 font-bold font-mono bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200">Auto</span>
-            </div>
-            <input
-              type="number"
-              formControlName="documentNumber"
-              [readOnly]="true"
-              tabindex="-1"
-              (keydown)="$event.preventDefault()"
-              (wheel)="$event.preventDefault()"
-              class="w-full rounded-lg border-slate-200 text-sm px-3 py-2 border font-mono font-black bg-slate-100 text-slate-700 cursor-not-allowed select-none focus:outline-hidden focus:ring-0 shadow-2xs"
-            />
-          </div>
-        </div>
+<!-- Series & Auto Number -->
+<div class="grid grid-cols-2 gap-3">
+  <div>
+    <label class="block text-xs font-bold text-slate-700 mb-1">Σειρά</label>
+    <input
+      type="text"
+      formControlName="series"
+      placeholder="π.χ. ΤΠΥ"
+      class="w-full rounded-lg border-slate-300 text-sm px-3 py-2 border uppercase font-mono font-black text-slate-900 focus:ring-blue-500 focus:border-blue-500 shadow-2xs"
+    />
+  </div>
+  <div>
+    <div class="flex items-center justify-between mb-1">
+      <label class="block text-xs font-bold text-slate-700">Αριθμός</label>
+      <span class="text-[10px] text-blue-700 font-bold font-mono bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">Auto</span>
+    </div>
+    <input
+      type="number"
+      formControlName="documentNumber"
+      [readOnly]="true"
+      tabindex="-1"
+      (keydown)="$event.preventDefault()"
+      (wheel)="$event.preventDefault()"
+      class="w-full rounded-lg border-slate-200 text-sm px-3 py-2 border font-mono font-black bg-slate-100 text-slate-700 cursor-not-allowed select-none focus:outline-hidden focus:ring-0 shadow-2xs"
+    />
+  </div>
+</div>
 
-        <!-- Issue Date -->
-        <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">Ημερομηνία Έκδοσης</label>
-          <input 
-            type="date" 
-            formControlName="issueDate" 
-            class="w-full rounded-lg border-slate-300 text-xs px-3 py-2 border font-mono font-medium text-slate-800 shadow-2xs" 
-          />
-        </div>
+<!-- Issue Date & Optional Correlated Delivery MARK -->
+<div class="grid grid-cols-1 gap-3" [class.sm:grid-cols-2]="['1.1', '1.2', '1.3', '2.1'].includes(invoiceForm.get('invoiceType')?.value ?? '')">
+  <div>
+    <label class="block text-xs font-bold text-slate-700 mb-1">Ημερομηνία Έκδοσης</label>
+    <input
+      type="date"
+      formControlName="issueDate"
+      class="w-full rounded-lg border-slate-300 text-xs px-3 py-2 border font-mono font-medium text-slate-800 shadow-2xs"
+    />
+  </div>
+
+  @if (['1.1', '1.2', '1.3', '2.1'].includes(invoiceForm.get('invoiceType')?.value ?? '')) {
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <label for="correlatedMarkInput" class="block text-xs font-bold text-slate-700">
+          Σχετιζόμενο MARK
+        </label>
+        <span class="text-[10px] text-slate-500 font-medium bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+          9.1 / 9.2
+        </span>
+      </div>
+      <input
+        id="correlatedMarkInput"
+        type="text"
+        formControlName="correlatedMark"
+        placeholder="π.χ. 400001976610813"
+        inputmode="numeric"
+        class="w-full rounded-lg border-slate-300 text-xs px-3 py-2 border font-mono font-medium text-slate-800 shadow-2xs"
+      />
+    </div>
+  }
+</div>
       </div>
     </div>
 
