@@ -564,6 +564,8 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   }
 
   public async onSaveDraftManually(): Promise<void> {
+    if (this.completedInvoice()) return; // Guard: never overwrite an already-transmitted invoice
+
     try {
       const tenantId = this.auth?.currentTenantId?.() || 'tenant_minimarket';
       const formVal: any = this.invoiceForm.getRawValue();
@@ -580,11 +582,12 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
         )
         .first();
 
-      const nextDocNum = await (this.db as any).getNextDocumentNumber(tenantId, series);
+      const draftId = existingDraft?.id || this.currentDraftId() || crypto.randomUUID();
+      const nextDocNum = existingDraft?.documentNumber || await (this.db as any).getNextDocumentNumber(tenantId, series);
 
       const draftRecord: any = {
         ...formVal,
-        id: existingDraft?.id || crypto.randomUUID(),
+        id: draftId,
         tenantId,
         series,
         documentNumber: nextDocNum,
@@ -603,6 +606,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       };
 
       await (this.db as any).invoices.put(draftRecord);
+      this.currentDraftId.set(draftId); // <-- Bind the draft ID so Transmit overwrites this exact row!
       this.autoSaveStatus.set('Αποθηκεύτηκε ως πρόχειρο!');
     } catch (err: any) {
       console.error('Error saving manual draft:', err);
@@ -1421,7 +1425,12 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       const result = await this.fiscalDispatcher.transmit(invoice);
 
       if (result.success && result.mark) {
-        const invoiceId = invoice.id != null ? String(invoice.id) : (this.currentDraftId() || crypto.randomUUID());
+        // 1. Keep exact key type (number or string) so .put() updates the original draft row instead of creating a duplicate
+        const invoiceId: any =
+          invoice.id != null
+            ? invoice.id
+            : this.currentDraftId() || crypto.randomUUID();
+
         const rawResult = result as any;
         const officialUid: string = result.uid || rawResult.invoiceUid || '';
         const officialQr: string =
@@ -1461,8 +1470,26 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
 
         await this.db.invoices.put(finalizedInvoice);
 
+        // Remove any lingering DRAFT duplicate for the same series & documentNumber
+        await this.db.invoices
+          .where('tenantId')
+          .equals(finalizedInvoice.tenantId)
+          .filter(
+            (inv: any) =>
+              inv.id !== finalizedInvoice.id &&
+              inv.series === finalizedInvoice.series &&
+              inv.documentNumber === finalizedInvoice.documentNumber &&
+              !inv.mark &&
+              inv.transmissionStatus === 'DRAFT'
+          )
+          .delete();
+
+        // 2. Prevent any debounced auto-save from overwriting this transmitted invoice back to DRAFT
+        this.invoiceForm.markAsPristine();
+        this.autoSaveStatus.set(`Διαβιβάστηκε (MARK: ${result.mark})`);
+
         this.completedInvoice.set({
-          id: invoiceId,
+          id: String(invoiceId),
           series: finalizedInvoice.series,
           documentNumber: finalizedInvoice.documentNumber,
           mark: String(result.mark),
@@ -1476,7 +1503,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
 
       } else {
         const invoiceId = invoice.id != null ? String(invoice.id) : null;
-        if (invoiceId) {
+        if (invoiceId != null) {
           await this.db.invoices.update(invoiceId, {
             transmissionStatus: 'FAILED',
             updatedAt: Date.now(),
@@ -1490,8 +1517,6 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       this.autoSaveStatus.set('Σφάλμα δικτύου κατά την αποστολή');
     }
   }
-
-  // invoice-create.component.ts
 
 // invoice-builder.component.ts
 public async onPrintCompletedInvoice(): Promise<void> {

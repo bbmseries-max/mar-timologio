@@ -267,6 +267,7 @@ export class MyDataService {
 
     const targetEndpoint = `${baseUrl}/CancelInvoice?mark=${encodeURIComponent(mark.trim())}`;
 
+
     const envelope = {
       action: 'CancelInvoice',
       userId,
@@ -306,11 +307,20 @@ export class MyDataService {
       }
 
       const errorNodes = Array.from(doc.querySelectorAll('errors > error'));
+      const errorCodes = errorNodes.map(e => e.querySelector('code')?.textContent?.trim() || '');
       const errors = errorNodes.map(e => {
         const code = e.querySelector('code')?.textContent?.trim() || '';
         const msg = e.querySelector('message')?.textContent?.trim() || '';
         return `${code ? `[${code}] ` : ''}${msg}`.trim();
       });
+
+      // Code 251: AADE already cancelled this MARK on an earlier request — reconcile locally as success
+      if (errorCodes.includes('251')) {
+        return {
+          success: true,
+          cancellationMark: cancellationMark || `SYNCED-${mark.trim()}`,
+        };
+      }
 
       return {
         success: false,
@@ -324,5 +334,6 @@ export class MyDataService {
         errors: [err?.error?.error || err?.message || 'Αποτυχία δικτύου κατά την κλήση ακύρωσης.'],
       };
     }
-  }
+  
+}
 }

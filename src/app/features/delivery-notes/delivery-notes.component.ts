@@ -232,6 +232,20 @@ import { LocalInvoiceRecord } from '@core/models/database.models';
       </div>
     </div>
   `,
+  styles: [`
+    tbody tr:nth-child(odd) {
+      background-color: #ffffff;
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: #f1f5f9;
+    }
+
+    tbody tr:hover {
+      background-color: #e0e7ff !important;
+      transition: background-color 0.12s ease;
+    }
+  `],
 })
 export class DeliveryNotesComponent implements OnInit {
   private readonly db = inject(LocalDbService);

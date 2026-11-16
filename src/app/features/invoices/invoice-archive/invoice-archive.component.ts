@@ -27,7 +27,21 @@ type FilterStatus = 'ALL' | 'TRANSMITTED' | 'DRAFT' | 'FAILED';
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink, InvoicePrintComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  templateUrl: './invoice-archive.component.html' 
+  templateUrl: './invoice-archive.component.html',
+  styles: [`
+    tbody tr:nth-child(odd) {
+      background-color: #ffffff;
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: #f1f5f9;
+    }
+
+    tbody tr:hover {
+      background-color: #e0e7ff !important;
+      transition: background-color 0.12s ease;
+    }
+  `],
 })
 export class InvoiceArchiveComponent implements OnInit {
   private readonly db = inject(LocalDbService);
