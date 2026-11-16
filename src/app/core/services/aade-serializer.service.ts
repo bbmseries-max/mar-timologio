@@ -1,24 +1,9 @@
-import { Injectable, inject } from '@angular/core';
-import {
-  InvoiceLineItem,
-  GoodsMovementData,
-  InvoiceTotals,
-  InvoiceDocument,
-  Customer,
-} from '../models/aade.models';
-import { LocalDbService } from './local-db.service';
+import { Injectable } from '@angular/core';
+import { InvoiceDocument } from '../models/aade.models';
 import { CompanySettingsRecord } from '@core/models/database.models';
-
-export interface CompanyIssuerInfo {
-  afm: string;
-  country: string;
-  branch: number;
-}
 
 @Injectable({ providedIn: 'root' })
 export class AadeSerializerService {
-  private readonly db = inject(LocalDbService);
-
   public serializeToXml(
     invoice: InvoiceDocument | any,
     issuerAfm: string,
@@ -53,8 +38,7 @@ export class AadeSerializerService {
       invoice.customer ||
       parsedPayload.customer ||
       invoice.counterparty ||
-      invoice.counterpart ||
-      {
+      invoice.counterpart || {
         afm: invoice.customerAfm || parsedPayload.customerAfm,
         legalName: invoice.customerName || parsedPayload.customerName,
       };
@@ -79,18 +63,29 @@ export class AadeSerializerService {
     };
 
     // 4. Resolve Lines First to Guarantee True Recalculation
-    const resolvedLines: any[] = (invoice.lines && invoice.lines.length > 0)
-      ? invoice.lines
-      : (parsedPayload.lines || []);
+    const resolvedLines: any[] =
+      invoice.lines && invoice.lines.length > 0 ? invoice.lines : parsedPayload.lines || [];
 
     const netSum = resolvedLines.reduce((acc, l) => acc + Number(l.netValue || 0), 0);
     const vatSum = resolvedLines.reduce((acc, l) => acc + Number(l.vatAmount || 0), 0);
-    const grossSum = resolvedLines.reduce((acc, l) => acc + Number(l.totalValue ?? (Number(l.netValue || 0) + Number(l.vatAmount || 0))), 0);
+    const grossSum = resolvedLines.reduce(
+      (acc, l) => acc + Number(l.totalValue ?? Number(l.netValue || 0) + Number(l.vatAmount || 0)),
+      0
+    );
 
     // 5. Enforce Strict Financial Boundaries Per Document Type
-    const safeNet = isMovementOnly ? 0 : Number((invoice.totalNet ?? parsedPayload.totalNet ?? netSum).toFixed(2));
-    const safeVat = (isMovementOnly || is12) ? 0 : Number((invoice.totalVat ?? parsedPayload.totalVat ?? vatSum).toFixed(2));
-    const safeGross = isMovementOnly ? 0 : (is12 ? safeNet : Number((invoice.totalGross ?? parsedPayload.totalGross ?? grossSum).toFixed(2)));
+    const safeNet = isMovementOnly
+      ? 0
+      : Number((invoice.totalNet ?? parsedPayload.totalNet ?? netSum).toFixed(2));
+    const safeVat =
+      isMovementOnly || is12
+        ? 0
+        : Number((invoice.totalVat ?? parsedPayload.totalVat ?? vatSum).toFixed(2));
+    const safeGross = isMovementOnly
+      ? 0
+      : is12
+        ? safeNet
+        : Number((invoice.totalGross ?? parsedPayload.totalGross ?? grossSum).toFixed(2));
 
     // 6. Resolve Movement & Correlated Invoices
     const movementData = invoice.movement || parsedPayload.movement;
@@ -101,7 +96,11 @@ export class AadeSerializerService {
       invoice.correlatedInvoices ||
       parsedPayload.correlatedInvoices;
 
-    const mergedMovement = movementData ? { ...movementData, correlatedMark } : (correlatedMark ? { correlatedMark } : undefined);
+    const mergedMovement = movementData
+      ? { ...movementData, correlatedMark }
+      : correlatedMark
+        ? { correlatedMark }
+        : undefined;
 
     // 7. Resolve Payment Method Type (1=Cash for Retail, 3=Transfer/Credit for B2B)
     const paymentMethodType =
@@ -114,7 +113,8 @@ export class AadeSerializerService {
     return this.generateInvoicesDocXml({
       series: invoice.series || parsedPayload.series || 'DEV',
       documentNumber: Number(invoice.documentNumber || parsedPayload.documentNumber) || 1,
-      issueDate: invoice.issueDate || parsedPayload.issueDate || new Date().toISOString().substring(0, 10),
+      issueDate:
+        invoice.issueDate || parsedPayload.issueDate || new Date().toISOString().substring(0, 10),
       invoiceType: invType,
       currency: invoice.currency || parsedPayload.currency || 'EUR',
       issuer: {
@@ -167,12 +167,12 @@ export class AadeSerializerService {
 
     const fromAddr = data.movement?.addressFrom || {};
     const issuerName = this.escapeXml(data.issuer?.name || data.issuer?.legalName || '');
-    
+
     // Resolve store / loading address dynamically from movement input or tenant settings
     const loadStreet = this.escapeXml((fromAddr.street || data.issuer?.street || '').trim());
-    const loadNum    = this.escapeXml((fromAddr.number || data.issuer?.number || '1').trim());
-    const loadZip    = this.escapeXml((fromAddr.postalCode || data.issuer?.postalCode || '').trim());
-    const loadCity   = this.escapeXml((fromAddr.city || data.issuer?.city || '').trim());
+    const loadNum = this.escapeXml((fromAddr.number || data.issuer?.number || '1').trim());
+    const loadZip = this.escapeXml((fromAddr.postalCode || data.issuer?.postalCode || '').trim());
+    const loadCity = this.escapeXml((fromAddr.city || data.issuer?.city || '').trim());
 
     let issuerExtraXml = '';
     if (isMovementOnly && loadStreet) {
@@ -199,11 +199,15 @@ export class AadeSerializerService {
     const rawCpAfm = cp?.afm || cp?.vatNumber || '';
     const toAddr = data.movement?.addressTo || {};
 
-    const destStreet = this.escapeXml((toAddr.street || cp.street || cp.address?.street || '').trim());
+    const destStreet = this.escapeXml(
+      (toAddr.street || cp.street || cp.address?.street || '').trim()
+    );
     const rawDestNum = toAddr.number || cp.number || cp.address?.number || '1';
-    const destNum    = this.escapeXml((rawDestNum && rawDestNum !== '0') ? rawDestNum : '1');
-    const destZip    = this.escapeXml((toAddr.postalCode || cp.postalCode || cp.address?.postalCode || '').trim());
-    const destCity   = this.escapeXml((toAddr.city || cp.city || cp.address?.city || '').trim());
+    const destNum = this.escapeXml(rawDestNum && rawDestNum !== '0' ? rawDestNum : '1');
+    const destZip = this.escapeXml(
+      (toAddr.postalCode || cp.postalCode || cp.address?.postalCode || '').trim()
+    );
+    const destCity = this.escapeXml((toAddr.city || cp.city || cp.address?.city || '').trim());
 
     let counterpartXml = '';
 
@@ -212,9 +216,9 @@ export class AadeSerializerService {
       if (is92) {
         // Rule 204: 9.2 Aggregate transport requires 000000000 and address
         const cpStreet = destStreet || 'ΔΙΑΝΟΜΗ';
-        const cpNum    = destNum || '1';
-        const cpZip    = destZip || loadZip || '11522';
-        const cpCity   = destCity || loadCity || 'ΑΘΗΝΑ';
+        const cpNum = destNum || '1';
+        const cpZip = destZip || loadZip || '11522';
+        const cpCity = destCity || loadCity || 'ΑΘΗΝΑ';
 
         counterpartXml = `\n    <counterpart>
       <vatNumber>000000000</vatNumber>
@@ -235,9 +239,8 @@ export class AadeSerializerService {
 
         const shouldIncludeName = !isGreek || isMovementOnly;
         const nameVal = cp.legalName || cp.name;
-        const nameTag = (shouldIncludeName && nameVal)
-          ? `\n      <name>${this.escapeXml(nameVal)}</name>`
-          : '';
+        const nameTag =
+          shouldIncludeName && nameVal ? `\n      <name>${this.escapeXml(nameVal)}</name>` : '';
 
         const cpBranch = isNaN(Number(cp.branch)) ? 0 : Number(cp.branch);
 
@@ -302,7 +305,13 @@ export class AadeSerializerService {
       }
 
       const formPurpose = Number(data.movement?.movePurpose);
-      const movePurpose = is92 ? 8 : (formPurpose || (isMovementOnly ? 8 : 1));
+      let movePurpose = is92 ? 8 : formPurpose || (isMovementOnly ? 8 : 1);
+
+      // 9.3 Guard: AADE forbids movePurpose 6 (Φύλαξη) on 9.3 ([266]); map UI '6 — Επιστροφή' to valid AADE code 5
+      if (is93 && movePurpose === 6) {
+        movePurpose = 5;
+      }
+
       headerTags += `\n      <movePurpose>${movePurpose}</movePurpose>`;
 
       if (movePurpose === 19 && data.movement.otherMovePurposeTitle) {
@@ -311,12 +320,10 @@ export class AadeSerializerService {
 
       // XSD Law: Both loadingAddress and deliveryAddress must exist in this order
       if (loadStreet) {
-        const effectiveDelStreet = is92 
-          ? (destStreet || 'ΔΙΑΝΟΜΗ') 
-          : (destStreet || loadStreet);
-        const effectiveDelNum    = is92 ? (destNum || '1') : (destNum || loadNum);
-        const effectiveDelZip    = is92 ? (destZip || loadZip) : (destZip || loadZip);
-        const effectiveDelCity   = is92 ? (destCity || loadCity) : (destCity || loadCity);
+        const effectiveDelStreet = is92 ? destStreet || 'ΔΙΑΝΟΜΗ' : destStreet || loadStreet;
+        const effectiveDelNum = is92 ? destNum || '1' : destNum || loadNum;
+        const effectiveDelZip = is92 ? destZip || loadZip : destZip || loadZip;
+        const effectiveDelCity = is92 ? destCity || loadCity : destCity || loadCity;
 
         headerTags += `
       <otherDeliveryNoteHeader>
@@ -353,9 +360,10 @@ export class AadeSerializerService {
     // -------------------------------------------------------------------------
     // 5. Lines Generation
     // -------------------------------------------------------------------------
-    const rawLines = data.lines && data.lines.length > 0
-      ? data.lines
-      : [{ description: 'Εμπορεύματα', quantity: 1, netValue: 0 }];
+    const rawLines =
+      data.lines && data.lines.length > 0
+        ? data.lines
+        : [{ description: 'Εμπορεύματα', quantity: 1, netValue: 0 }];
 
     const linesXml = rawLines
       .map((line: any, idx: number) => {
@@ -384,7 +392,7 @@ export class AadeSerializerService {
         // Commercial Invoices (1.1, 1.2, 2.1, 11.1, 11.2)
         const net = Number(line.netValue || 0).toFixed(2);
         const vatCat = is12 ? 7 : Number(line.vatRateCategory ?? line.vatCategory ?? 1);
-        const vat = (isMovementOnly || is12) ? '0.00' : Number(line.vatAmount || 0).toFixed(2);
+        const vat = is12 ? '0.00' : Number(line.vatAmount || 0).toFixed(2);
 
         let e3 = 'E3_561_001';
         let cat = 'category1_1';
@@ -431,8 +439,13 @@ export class AadeSerializerService {
     // 6. Summary Block (Mirrors line details)
     // -------------------------------------------------------------------------
     const netSummary = isMovementOnly ? '0.00' : Number(data.totals?.totalNetValue || 0).toFixed(2);
-    const vatSummary = (isMovementOnly || is12) ? '0.00' : Number(data.totals?.totalVatAmount || 0).toFixed(2);
-    const grossSummary = isMovementOnly ? '0.00' : (is12 ? netSummary : Number(data.totals?.totalGrossValue || 0).toFixed(2));
+    const vatSummary =
+      isMovementOnly || is12 ? '0.00' : Number(data.totals?.totalVatAmount || 0).toFixed(2);
+    const grossSummary = isMovementOnly
+      ? '0.00'
+      : is12
+        ? netSummary
+        : Number(data.totals?.totalGrossValue || 0).toFixed(2);
 
     let summaryClassificationXml = '';
     if (isMovementOnly) {
@@ -496,7 +509,9 @@ ${summaryXml}
 </InvoicesDoc>`.trim();
   }
 
-  public parseCancelResponse(xmlText: string): { success: boolean; cancellationMark?: string; error?: string } {
+  public parseCancelResponse(
+    xmlText: string
+  ): { success: boolean; cancellationMark?: string; error?: string } {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
 
