@@ -5,7 +5,6 @@
   html, body {
     height: 100%;
     margin: 0;
-    /* Bright, airy Maranth light canvas */
     background-color: #f6f8fb;
     color: #0f294a;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
@@ -19,42 +18,33 @@
 }
 
 @media screen {
-  /* Light, airy card surfaces across the entire app */
-  .bg-white {
-    background-color: #ffffff !important;
-    border-color: #e2e8f0 !important;
-    box-shadow: 0 2px 12px rgba(15, 41, 74, 0.04);
-  }
-
-  /* Clean, bright form controls with crisp Aegean focus rings */
+  /* Clean, crisp inputs and selects against light cards */
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
   select,
   textarea {
     background-color: #ffffff !important;
     border: 1.5px solid #cbd5e1 !important;
     border-radius: 0.625rem !important;
-    color: #0f294a !important;
-    box-shadow: 0 1px 2px rgba(15, 41, 74, 0.03) !important;
-    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+    color: #0f172a !important;
+    box-shadow: 0 1px 2px rgba(15, 41, 74, 0.04) !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):hover,
   select:hover,
   textarea:hover {
     border-color: #60a5fa !important;
-    background-color: #f8fbff !important;
   }
 
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
   select:focus,
   textarea:focus {
     outline: none !important;
-    background-color: #ffffff !important;
     border-color: #2563eb !important;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14) !important;
   }
 
-  /* Clearly distinguish read-only / auto-filled fields */
+  /* Distinct read-only / auto-filled fields */
   input[readonly],
   select[disabled],
   input:disabled {
@@ -80,130 +70,4 @@ input[type="number"]::-webkit-inner-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
-}
-
-/* ==========================================================================
-   MARANTH PRO - UNIFIED PRINT ENGINE
-   ========================================================================== */
-
-/* Default page setup (A4 Sheets) */
-@page {
-  size: A4 portrait;
-  margin: 6mm 8mm;
-}
-
-@media print {
-  /* 1. Reset html and body root */
-  html, body {
-    margin: 0 !important;
-    padding: 0 !important;
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-    background: #ffffff !important;
-    color: #0f172a !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  /* 2. Suppress entire SPA Angular app and all modal overlays */
-  body > *:not(#maranth-print-portal) {
-    display: none !important;
-    height: 0 !important;
-    overflow: hidden !important;
-  }
-
-  /* 3. Display ONLY the dedicated print portal */
-  #maranth-print-portal {
-    display: block !important;
-    position: static !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #ffffff !important;
-    visibility: visible !important;
-  }
-
-  /* 4. A4 Sheet layout rules (Flex column pins footer, expands naturally for multi-line) */
-  #maranth-print-portal .print-sheet {
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-    width: 100% !important;
-    max-width: 190mm !important;
-    min-height: 260mm !important;
-    margin: 0 auto !important;
-    padding: 0 !important;
-    border: none !important;
-    box-shadow: none !important;
-    box-sizing: border-box !important;
-  }
-
-  /* 5. Thermal 80mm Roll Mode */
-  body.thermal-mode {
-    width: 80mm !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-
-  body.thermal-mode #maranth-print-portal {
-    width: 80mm !important;
-    max-width: 80mm !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-
-  body.thermal-mode #maranth-print-portal .thermal-receipt {
-    display: block !important;
-    width: 74mm !important;
-    margin: 0 auto !important;
-    padding: 2mm 1mm !important;
-    border: none !important;
-    box-shadow: none !important;
-    box-sizing: border-box !important;
-  }
-
-  /* 6. Footer Table Lockdown (Forces Side-by-Side QR & Totals) */
-  #maranth-print-portal .print-footer-container {
-    margin-top: auto !important;
-    width: 100% !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
-
-  #maranth-print-portal .print-footer-container table {
-    display: table !important;
-    width: 100% !important;
-    table-layout: fixed !important;
-    border-collapse: collapse !important;
-  }
-
-  #maranth-print-portal .print-footer-container tr {
-    display: table-row !important;
-  }
-
-  #maranth-print-portal .print-footer-container td {
-    display: table-cell !important;
-    vertical-align: top !important;
-  }
-
-  /* 7. Row breaks protection */
-  tr, .avoid-break {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
-
-  /* 8. Watermark styling */
-  .watermark,
-  .cancelled-stamp,
-  .cancelled-watermark {
-    position: absolute !important;
-    top: 50% !important;
-    left: 50% !important;
-    transform: translate(-50%, -50%) rotate(-35deg) !important;
-    transform-origin: center center !important;
-    pointer-events: none !important;
-    overflow: hidden !important;
-    max-width: 80% !important;
-  }
 }

@@ -53,6 +53,7 @@ export class CartBridgeService implements OnDestroy {
   'http://localhost:4201',
   'http://127.0.0.1:4201',
   'https://maranth.vercel.app',
+  'https://maranth-estiasi.vercel.app',
   'https://maranth-timologio.vercel.app',
   'https://maranth.gr',
   'https://www.maranth.gr'
