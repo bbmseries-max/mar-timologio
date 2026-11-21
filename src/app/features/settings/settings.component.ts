@@ -13,46 +13,62 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   @if (showDemoWarningModal()) {
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-    <div class="w-full max-w-md rounded-2xl bg-white border-2 border-rose-500 shadow-2xl overflow-hidden">
-      <!-- Red Alert Header -->
-      <div class="bg-rose-600 px-5 py-4 text-white flex items-center gap-3">
-        <span class="text-2xl leading-none">⚠️</span>
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-rose-950/65 backdrop-blur-sm p-4 animate-fadeIn"
+    (click)="cancelDemoWarning()"
+  >
+    <div
+      class="w-full max-w-md rounded-2xl bg-white border-2 border-rose-600 shadow-[0_25px_60px_-15px_rgba(225,29,72,0.45)] overflow-hidden transform transition-all"
+      (click)="$event.stopPropagation()"
+    >
+      <!-- Top Hazard Stripe Bar -->
+      <div class="h-2 w-full bg-gradient-to-r from-red-600 via-rose-500 to-red-600"></div>
+
+      <!-- Bold Crimson Alert Header -->
+      <div class="bg-gradient-to-br from-rose-600 to-red-700 px-6 py-5 text-white flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-white/15 border border-white/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">
+          <span class="animate-pulse">🚨</span>
+        </div>
         <div>
-          <h3 class="text-sm font-black uppercase tracking-wide">
-            Προσοχή — Εκκίνηση Λειτουργίας Demo
+          <span class="inline-block px-2 py-0.5 rounded-md bg-red-950/50 text-rose-100 text-[10px] font-black uppercase tracking-widest mb-1 border border-rose-400/30">
+            Προειδοποίηση Ασφαλείας
+          </span>
+          <h3 class="text-base font-black tracking-tight leading-snug">
+            Εκκίνηση Περιβάλλοντος Demo
           </h3>
-          <p class="text-[11px] text-rose-100 font-medium">
-            Επιβεβαίωση επαναφοράς συνεδρίας
-          </p>
         </div>
       </div>
 
       <!-- Warning Body -->
-      <div class="p-5 space-y-3 text-xs text-slate-700 leading-relaxed">
-        <p class="font-bold text-rose-700 text-sm">
-          Πρόκειται να ξεκινήσετε νέα δοκιμαστική συνεδρία από την αρχή.
-        </p>
-        <p>
-          Τυχόν μη αποθηκευμένες αλλαγές στην τρέχουσα φόρμα θα χαθούν. Τα αποθηκευμένα παραστατικά και οι ρυθμίσεις σας παραμένουν προστατευμένα στη βάση δεδομένων.
+      <div class="p-6 space-y-4 text-xs text-slate-700 leading-relaxed">
+        <div class="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-rose-900">
+          <span class="text-base leading-none mt-0.5">⚠️</span>
+          <p class="font-bold leading-snug">
+            Πρόκειται να μεταβείτε σε δοκιμαστική λειτουργία (Sandbox Demo). Τα παραστατικά που εκδίδονται εδώ δεν έχουν φορολογική ισχύ.
+          </p>
+        </div>
+
+        <p class="text-slate-600">
+          Τα αποθηκευμένα παραστατικά, οι πελάτες και οι ρυθμίσεις σας παραμένουν <strong class="text-slate-900">πλήρως προστατευμένα</strong> στη βάση δεδομένων και δεν θα διαγραφούν.
         </p>
       </div>
 
-      <!-- Actions -->
-      <div class="px-5 py-3.5 bg-rose-50/70 border-t border-rose-100 flex items-center justify-end gap-2.5">
+      <!-- Footer Actions -->
+      <div class="px-6 py-4 bg-slate-50 border-t border-rose-100 flex items-center justify-end gap-3">
         <button
           type="button"
           (click)="cancelDemoWarning()"
-          class="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 transition cursor-pointer"
+          class="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 shadow-2xs transition cursor-pointer"
         >
           Ακύρωση
         </button>
         <button
           type="button"
           (click)="confirmSafeDemoMode()"
-          class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-xs transition cursor-pointer"
+          class="px-5 py-2.5 rounded-xl text-xs font-black text-white bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 shadow-md shadow-rose-600/30 transition active:scale-98 cursor-pointer flex items-center gap-1.5"
         >
-          Συνέχεια σε Demo
+          <span>⚠️</span>
+          <span>Επιβεβαίωση &amp; Συνέχεια</span>
         </button>
       </div>
     </div>
