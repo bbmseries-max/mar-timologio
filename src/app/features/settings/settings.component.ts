@@ -12,6 +12,52 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
   imports: [CommonModule, ReactiveFormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+  @if (showDemoWarningModal()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+    <div class="w-full max-w-md rounded-2xl bg-white border-2 border-rose-500 shadow-2xl overflow-hidden">
+      <!-- Red Alert Header -->
+      <div class="bg-rose-600 px-5 py-4 text-white flex items-center gap-3">
+        <span class="text-2xl leading-none">⚠️</span>
+        <div>
+          <h3 class="text-sm font-black uppercase tracking-wide">
+            Προσοχή — Εκκίνηση Λειτουργίας Demo
+          </h3>
+          <p class="text-[11px] text-rose-100 font-medium">
+            Επιβεβαίωση επαναφοράς συνεδρίας
+          </p>
+        </div>
+      </div>
+
+      <!-- Warning Body -->
+      <div class="p-5 space-y-3 text-xs text-slate-700 leading-relaxed">
+        <p class="font-bold text-rose-700 text-sm">
+          Πρόκειται να ξεκινήσετε νέα δοκιμαστική συνεδρία από την αρχή.
+        </p>
+        <p>
+          Τυχόν μη αποθηκευμένες αλλαγές στην τρέχουσα φόρμα θα χαθούν. Τα αποθηκευμένα παραστατικά και οι ρυθμίσεις σας παραμένουν προστατευμένα στη βάση δεδομένων.
+        </p>
+      </div>
+
+      <!-- Actions -->
+      <div class="px-5 py-3.5 bg-rose-50/70 border-t border-rose-100 flex items-center justify-end gap-2.5">
+        <button
+          type="button"
+          (click)="cancelDemoWarning()"
+          class="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 transition cursor-pointer"
+        >
+          Ακύρωση
+        </button>
+        <button
+          type="button"
+          (click)="confirmSafeDemoMode()"
+          class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-xs transition cursor-pointer"
+        >
+          Συνέχεια σε Demo
+        </button>
+      </div>
+    </div>
+  </div>
+}
     <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
       <!-- Header -->
       <div class="border-b border-slate-200 pb-5 flex items-center justify-between">
@@ -278,24 +324,13 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
           </div>
         </div>
 
-        <!-- Submit Button -->
-        <div class="flex justify-end gap-3 pt-2">
+        <!-- Submit Button Row inside <form> -->
+        <div class="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200/80">
           @if (savedNotification()) {
             <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               <span>✓</span> {{ savedNotification() }}
             </span>
           }
-          <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-200/80">
-  <button
-    type="button"
-    (click)="onResetToDemo()"
-    [disabled]="isResettingDemo()"
-    class="h-10 px-3.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-    title="Επαναφορά προεπιλεγμένου καταστήματος Sandbox Demo"
-  >
-    <span>🔄</span>
-    <span>{{ isResettingDemo() ? 'Επαναφορά...' : 'Επαναφορά Demo' }}</span>
-  </button>
           <button
             type="submit"
             [disabled]="isSaving()"
@@ -305,52 +340,65 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
             <span>{{ isSaving() ? 'Αποθήκευση...' : 'Αποθήκευση Ρυθμίσεων' }}</span>
           </button>
         </div>
-        </div>
       </form>
     </div>
-    <section class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
-  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
-    <div>
-      <h2 class="text-sm font-black text-[#0f294a] uppercase tracking-tight flex items-center gap-2">
-        <span>💾</span>
-        <span>Αντίγραφα Ασφαλείας (Backup &amp; Restore)</span>
-      </h2>
-      <p class="text-xs text-slate-500 mt-1">
-        Εξαγωγή και επαναφορά όλων των τοπικών δεδομένων (Παραστατικά, Πελάτες, Είδη, Ρυθμίσεις) σε αρχείο JSON.
-      </p>
-    </div>
 
-    <div class="flex flex-wrap items-center gap-2.5">
-      <button
-        type="button"
-        (click)="onDownloadBackup()"
-        class="px-4 py-2.5 rounded-xl bg-[#0f294a] hover:bg-blue-900 text-white text-xs font-bold shadow-2xs transition cursor-pointer flex items-center gap-1.5"
-      >
-        <span>⬇️</span>
-        <span>Λήψη Backup (.json)</span>
-      </button>
+    <!-- Backup, Restore & Safe Demo Zone (Separated from Save) -->
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 pb-10">
+      <section class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
+          <div>
+            <h2 class="text-sm font-black text-[#0f294a] uppercase tracking-tight flex items-center gap-2">
+              <span>💾</span>
+              <span>Αντίγραφα Ασφαλείας &amp; Δοκιμές (Backup / Demo)</span>
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">
+              Εξαγωγή και επαναφορά όλων των τοπικών δεδομένων (Παραστατικά, Πελάτες, Είδη, Ρυθμίσεις) σε αρχείο JSON.
+            </p>
+          </div>
 
-      <label
-        class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#0f294a] border border-slate-300 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
-      >
-        <span>⬆️</span>
-        <span>Επαναφορά από JSON</span>
-        <input
-          type="file"
-          accept=".json,application/json"
-          (change)="onRestoreBackupFile($event)"
-          class="hidden"
-        />
-      </label>
-    </div>
-  </div>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              (click)="onDownloadBackup()"
+              class="px-4 py-2.5 rounded-xl bg-[#0f294a] hover:bg-blue-900 text-white text-xs font-bold shadow-2xs transition cursor-pointer flex items-center gap-1.5"
+            >
+              <span>⬇️</span>
+              <span>Λήψη Backup (.json)</span>
+            </button>
 
-  @if (backupStatus()) {
-    <div class="text-xs font-semibold px-3.5 py-2.5 rounded-xl bg-blue-50 text-blue-900 border border-blue-200">
-      {{ backupStatus() }}
+            <label
+              class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#0f294a] border border-slate-300 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+            >
+              <span>⬆️</span>
+              <span>Επαναφορά από JSON</span>
+              <input
+                type="file"
+                accept=".json,application/json"
+                (change)="onRestoreBackupFile($event)"
+                class="hidden"
+              />
+            </label>
+
+            <button
+              type="button"
+              (click)="openDemoWarning()"
+              class="px-4 py-2.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition cursor-pointer flex items-center gap-1.5"
+              title="Εκκίνηση ασφαλούς Sandbox Demo χωρίς διαγραφή βάσης"
+            >
+              <span>🧪</span>
+              <span>Λειτουργία Demo</span>
+            </button>
+          </div>
+        </div>
+
+        @if (backupStatus()) {
+          <div class="text-xs font-semibold px-3.5 py-2.5 rounded-xl bg-blue-50 text-blue-900 border border-blue-200">
+            {{ backupStatus() }}
+          </div>
+        }
+      </section>
     </div>
-  }
-</section>
   `
 })
 export class SettingsComponent implements OnInit {
@@ -360,10 +408,34 @@ export class SettingsComponent implements OnInit {
   private readonly myDataService = inject(MyDataService);
   private readonly cdr = inject(ChangeDetectorRef);
   public readonly isResettingDemo = signal<boolean>(false);
+  public readonly showDemoWarningModal = signal<boolean>(false);
 
   public readonly isSaving = signal<boolean>(false);
   public readonly savedNotification = signal<string | null>(null);
   public readonly backupStatus = signal<string | null>(null);
+
+  public openDemoWarning(): void {
+    this.showDemoWarningModal.set(true);
+  }
+
+  public cancelDemoWarning(): void {
+    this.showDemoWarningModal.set(false);
+  }
+
+  public confirmSafeDemoMode(): void {
+    this.showDemoWarningModal.set(false);
+
+    // Safe: switches active environment to SANDBOX without wiping Dexie IndexedDB or overwriting business settings
+    this.form.patchValue({
+      fiscalEnvironment: 'dev',
+      isProduction: false,
+    });
+    this.myDataService.setEnvironment('dev');
+    this.backupStatus.set(
+      '✓ Ενεργοποιήθηκε το ασφαλές περιβάλλον Demo (Sandbox) — τα παραστατικά και τα στοιχεία σας παρέμειναν ανέπαφα.'
+    );
+    this.cdr.markForCheck();
+  }
 
   public readonly form = this.fb.group({
     afm: [''],
