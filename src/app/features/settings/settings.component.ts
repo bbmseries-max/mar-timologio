@@ -361,7 +361,7 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
 
     <!-- Backup, Restore & Safe Demo Zone (Separated from Save) -->
     <div class="max-w-4xl mx-auto px-4 sm:px-6 pb-10">
-      <section class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
+      <section class="bg-sky border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
           <div>
             <h2 class="text-sm font-black text-[#0f294a] uppercase tracking-tight flex items-center gap-2">
