@@ -67,7 +67,7 @@
     @if (invoice().status === 'CANCELLED' || invoice().isCancelled) {
       <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-50 overflow-hidden">
         <div class="border-8 border-red-600/40 text-red-600/40 font-black text-6xl tracking-widest uppercase px-12 py-4 -rotate-12 select-none">
-          ΑΚΥΡΩΘΕΝ / CANCELLED
+          ΠΙΣΤΩΤΙΚΟ / ΑΚΥΡΩΤΙΚΟ
         </div>
       </div>
     }
@@ -77,6 +77,9 @@
       <!-- Company Header -->
       <div class="flex justify-between items-start border-b-2 border-slate-900 pb-3 mb-4">
         <div class="space-y-0.5">
+          @if (invoice().issuer?.logoUrl) {
+            <img [src]="invoice().issuer.logoUrl" alt="Logo" class="h-8 w-auto mx-auto mb-1 object-contain" />
+          }
           <h1 class="text-base font-black tracking-tight text-slate-950 uppercase">
             {{ invoice().issuer.tradeName || invoice().issuer.legalName || 'ΕΠΙΧΕΙΡΗΣΗ' }}
           </h1>
@@ -93,10 +96,11 @@
           @if (invoice().issuer.address; as addr) {
             <p class="text-slate-600 text-xs">{{ addr.street }} {{ addr.number }}, {{ addr.postalCode }} {{ addr.city }}</p>
           }
-          @if (invoice().issuer.phone || invoice().issuer.email) {
+          @if (invoice().issuer.phone || invoice().issuer.email || invoice().issuer.website) {
             <p class="text-slate-500 text-[11px]">
               @if (invoice().issuer.phone) { <span>Τηλ: {{ invoice().issuer.phone }}</span> }
               @if (invoice().issuer.email) { <span class="mx-1 text-slate-300">|</span> <span>{{ invoice().issuer.email }}</span> }
+              @if (invoice().issuer.website) { <span class="mx-1 text-slate-300">|</span> <span>{{ invoice().issuer.website }}</span> }
             </p>
           }
         </div>
@@ -147,7 +151,7 @@
             </p>
             @if (!isRetailDoc(invoice().invoiceType) && invoice().customer.doy) {
               <p>
-                <span class="font-semibold text-slate-600">Δ.Ο.Υ.:</span> 
+                <span class="font-semibold text-slate-600">Δ.Ο.Υ. : </span> 
                 <span>{{ invoice().customer.doy }}</span>
               </p>
             }
@@ -196,73 +200,96 @@
       </table>
     </div>
 
-   <!-- ================================================================= -->
-      <!-- IMMUTABLE 2-COLUMN PRINT TABLE (CANNOT WRAP UNDER TOTALS)         -->
-      <!-- ================================================================= -->
-      <div class="print-footer-container mt-auto pt-3 border-t-2 border-slate-900 w-full">
-        <table style="width: 100%; border-collapse: collapse; border: none; margin: 0; padding: 0;">
-          <tbody>
-            <tr style="vertical-align: top; border: none;">
-              
-              <!-- LEFT CELL: 55% Width (QR Signature & Verification) -->
-              <td style="width: 55%; padding: 0; vertical-align: top; border: none;">
-                <div style="display: flex; align-items: flex-start; gap: 8px;">
-                  @if (invoice().qrUrl) {
-                    <div style="width: 76px; height: 76px; border: 1px solid #cbd5e1; padding: 2px; background: #ffffff; flex-shrink: 0;">
-                      <img 
-                        [src]="getQrImageUrl(invoice().qrUrl)" 
-                        alt="AADE QR Signature" 
-                        style="width: 100%; height: 100%; object-fit: contain; display: block;" 
-                        loading="eager"
-                      />
-                    </div>
-                  }
-                  <div style="font-family: monospace; font-size: 9px; line-height: 1.35; color: #0f172a;">
-                    <div style="font-weight: bold; text-transform: uppercase; font-size: 8.5px;">Ψηφιακη Σημανση myDATA AADE</div>
-                    <div>MARK: <b style="font-size: 9px;">{{ invoice().mark || '—' }}</b></div>
-                    @if (invoice().uid) {
-                      <div style="color: #475569; font-size: 8px;">UID: {{ invoice().uid }}</div>
-                    }
-                    <div style="color: #64748b; font-size: 7.5px; font-style: italic; margin-top: 2px;">
-                      Επαλήθευση εγκυρότητας μέσω σάρωσης QR
-                    </div>
-                    <div style="font-family: sans-serif; color: #94a3b8; font-size: 8px; margin-top: 2px;">
-                      Σελίδα 1 / 1
-                    </div>
-                  </div>
-                </div>
-              </td>
+    <!-- Optional Notes & Bank Accounts (Plain data lines above footer) -->
+    @if (invoice().notes || invoice().issuer?.bankAccounts?.length) {
+     <div class="mt-auto mb-2 text-[10px] text-slate-700 space-y-0.5">
+        @if (invoice().notes) {
+         <p><span class="font-bold text-slate-900">Σημειώσεις:</span> {{ invoice().notes }}</p>
+        }
+        @if (invoice().issuer?.bankAccounts?.length) {
+         <p><span class="font-bold text-slate-700">Τραπεζικοί Λογαριασμοί:</span> {{ invoice().issuer.bankAccounts.join(' • ') }}</p>
+        }
+      </div>
+    }
 
-              <!-- RIGHT CELL: 45% Width (Financial Totals) -->
-              <td style="width: 45%; padding: 0; vertical-align: top; text-align: right; border: none;">
-                @if (!isDispatch()) {
-                  <div style="display: inline-block; width: 100%; max-width: 250px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 10px; font-size: 11px;">
-                    <div style="display: flex; justify-content: space-between; color: #475569; margin-bottom: 3px;">
-                      <span>Καθαρή Αξία:</span>
-                      <span style="font-family: monospace; font-weight: bold; color: #0f172a;">
-                        {{ (invoice().totals.totalNetValue || 0) | number:'1.2-2' }} €
-                      </span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; color: #475569; margin-bottom: 3px;">
-                      <span>Συνολικός Φ.Π.Α.:</span>
-                      <span style="font-family: monospace; font-weight: bold; color: #0f172a;">
-                        {{ (invoice().totals.totalVatAmount || 0) | number:'1.2-2' }} €
-                      </span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-weight: 900; color: #0f172a; border-top: 1px solid #cbd5e1; padding-top: 4px; margin-top: 4px; font-size: 12px;">
-                      <span>Πληρωτέο:</span>
-                      <span style="font-family: monospace; font-size: 13px;">
-                        {{ (invoice().totals.totalGrossValue || 0) | number:'1.2-2' }} €
-                      </span>
-                    </div>
+    <!-- ================================================================= -->
+    <!-- IMMUTABLE 2-COLUMN PRINT TABLE (CANNOT WRAP UNDER TOTALS)         -->
+    <!-- ================================================================= -->
+    <div [class.mt-auto]="!invoice().notes && !invoice().issuer?.bankAccounts?.length" class="print-footer-container pt-3 border-t-2 border-slate-900 w-full">
+      <table style="width: 100%; border-collapse: collapse; border: none; margin: 0; padding: 0;">
+        <tbody>
+          <tr style="vertical-align: top; border: none;">
+            
+            <!-- LEFT CELL: 55% Width (QR Signature & Verification) -->
+            <td style="width: 55%; padding: 0; vertical-align: top; border: none;">
+              <div style="display: flex; align-items: flex-start; gap: 8px;">
+                @if (invoice().qrUrl) {
+                  <div style="width: 76px; height: 76px; border: 1px solid #cbd5e1; padding: 2px; background: #ffffff; flex-shrink: 0;">
+                    <img 
+                      [src]="getQrImageUrl(invoice().qrUrl)" 
+                      alt="AADE QR Signature" 
+                      style="width: 100%; height: 100%; object-fit: contain; display: block;" 
+                      loading="eager"
+                    />
                   </div>
                 }
-              </td>
+                <div style="font-family: monospace; font-size: 9px; line-height: 1.35; color: #0f172a;">
+                  <div style="font-weight: bold; text-transform: uppercase; font-size: 8.5px;">Ψηφιακη Σημανση myDATA AADE</div>
+                  <div>MARK: <b style="font-size: 9px;">{{ invoice().mark || '—' }}</b></div>
+                  @if (invoice().uid) {
+                    <div style="color: #475569; font-size: 8px;">UID: {{ invoice().uid }}</div>
+                  }
+                  <div style="color: #64748b; font-size: 7.5px; font-style: italic; margin-top: 2px;">
+                    Επαλήθευση εγκυρότητας μέσω σάρωσης QR
+                  </div>
+                  <div style="font-family: sans-serif; color: #94a3b8; font-size: 8px; margin-top: 2px;">
+                    Σελίδα 1 / 1
+                  </div>
+                </div>
+              </div>
+            </td>
 
-            </tr>
-          </tbody>
-        </table>
-      </div>
+            <!-- RIGHT CELL: 45% Width (Financial Totals) -->
+            <td style="width: 45%; padding: 0; vertical-align: top; text-align: right; border: none;">
+              @if (!isDispatch()) {
+                <div style="display: inline-block; width: 100%; max-width: 250px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 10px; font-size: 11px;">
+                  <div style="display: flex; justify-content: space-between; color: #475569; margin-bottom: 3px;">
+                    <span>Καθαρή Αξία:</span>
+                    <span style="font-family: monospace; font-weight: bold; color: #0f172a;">
+                      {{ (invoice().totals.totalNetValue || 0) | number:'1.2-2' }} €
+                    </span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; color: #475569; margin-bottom: 3px;">
+                    <span>Συνολικός Φ.Π.Α.:</span>
+                    <span style="font-family: monospace; font-weight: bold; color: #0f172a;">
+                      {{ (invoice().totals.totalVatAmount || 0) | number:'1.2-2' }} €
+                    </span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-weight: 900; color: #0f172a; border-top: 1px solid #cbd5e1; padding-top: 4px; margin-top: 4px; font-size: 12px;">
+                    <span>Πληρωτέο:</span>
+                    <span style="font-family: monospace; font-size: 13px;">
+                      {{ (invoice().totals.totalGrossValue || 0) | number:'1.2-2' }} €
+                    </span>
+                  </div>
+
+                  @if (invoice().previousBalance !== undefined && invoice().previousBalance !== null) {
+                    <div style="display: flex; justify-content: space-between; color: #475569; border-top: 1px dashed #cbd5e1; padding-top: 3px; margin-top: 4px; font-size: 10px;">
+                      <span>Προηγ. Υπόλοιπο:</span>
+                      <span style="font-family: monospace;">{{ invoice().previousBalance | number:'1.2-2' }} €</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-weight: 800; color: #0f172a; font-size: 10.5px;">
+                      <span>Νέο Υπόλοιπο:</span>
+                      <span style="font-family: monospace;">{{ ((invoice().previousBalance || 0) + (invoice().totals.totalGrossValue || 0)) | number:'1.2-2' }} €</span>
+                    </div>
+                  }
+                </div>
+              }
+            </td>
+
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
   </div>
   </div>
@@ -273,7 +300,16 @@
     <div #printContainer class="thermal-receipt bg-white text-black font-mono text-xs p-2 max-w-[80mm] mx-auto">
     <div class="thermal-receipt mx-auto bg-white text-slate-900 font-mono text-[11px] leading-tight p-3 border border-slate-200 shadow-xs max-w-[80mm]">
       
+      @if (invoice().status === 'CANCELLED' || invoice().isCancelled) {
+        <div class="border-2 border-red-600 text-red-600 font-black text-center text-xs uppercase py-1 mb-2">
+          *** ΠΙΣΤΩΤΙΚΟ / ΑΚΥΡΩΤΙΚΟ ***
+        </div>
+      }
+
       <div class="text-center pb-2 border-b border-dashed border-slate-400 space-y-0.5">
+        @if (invoice().issuer?.logoUrl) {
+          <img [src]="invoice().issuer.logoUrl" alt="Logo" class="h-8 w-auto mx-auto mb-1 object-contain" />
+        }
         <h2 class="text-sm font-black uppercase tracking-tight">
           {{ invoice().issuer.tradeName || invoice().issuer.legalName || 'ΕΠΙΧΕΙΡΗΣΗ' }}
         </h2>
@@ -282,16 +318,26 @@
         }
         <p>ΑΦΜ: {{ invoice().issuer.afm || '—' }} | ΔΟΥ: {{ invoice().issuer.doy || '—' }}</p>
         @if (invoice().issuer.address; as addr) {
-          <p class="text-[10px]">{{ addr.street }} {{ addr.number }}, {{ addr.city }}</p>
+          <p class="text-[10px]">{{ addr.street }} {{ addr.number }}, {{ addr.postalCode }} {{ addr.city }}</p>
+        }
+        @if (invoice().issuer.phone || invoice().issuer.email) {
+          <p class="text-[9px]">
+            @if (invoice().issuer.phone) { <span>Τηλ: {{ invoice().issuer.phone }}</span> }
+            @if (invoice().issuer.phone && invoice().issuer.email) { <span> | </span> }
+            @if (invoice().issuer.email) { <span>{{ invoice().issuer.email }}</span> }
+          </p>
+        }
+        @if (invoice().issuer.website) {
+          <p class="text-[9px]">{{ invoice().issuer.website }}</p>
         }
       </div>
 
       <div class="py-2 border-b border-dashed border-slate-400 space-y-0.5 text-[10px]">
         <div class="font-bold text-center uppercase">{{ getDocTitle(invoice().invoiceType) }}</div>
         <div class="flex items-center justify-between gap-2 text-xs">
-  <span>ΣΕΙΡΑ/ΑΡ.: <strong>{{ invoice().series }} - {{ invoice().documentNumber }}</strong></span>
-  <span>ΗΜ/ΝΙΑ: <strong>{{ invoice().issueDate }}</strong></span>
-</div>
+          <span>ΣΕΙΡΑ/ΑΡ.: <strong>{{ invoice().series }} - {{ invoice().documentNumber }}</strong></span>
+          <span>ΗΜ/ΝΙΑ: <strong>{{ invoice().issueDate }}</strong></span>
+        </div>
         @if (isRetailDoc(invoice().invoiceType)) {
           <div>ΠΕΛΑΤΗΣ: {{ invoice().customer.legalName || 'ΛΙΑΝΙΚΗ' }}</div>
         } @else {
@@ -323,44 +369,86 @@
       </div>
 
       <!-- Group totals + QR block to prevent multi-page splitting -->
-<div class="avoid-break mt-2">
-  <div class="py-2 border-b border-dashed border-slate-400 space-y-1 text-right">
-    <div class="flex justify-between text-[10px]">
-      <span>ΚΑΘΑΡΗ ΑΞΙΑ:</span>
-      <span>{{ (invoice().totals.totalNetValue || 0) | number:'1.2-2' }} €</span>
-    </div>
-    <div class="flex justify-between text-[10px]">
-      <span>Φ.Π.Α.:</span>
-      <span>{{ (invoice().totals.totalVatAmount || 0) | number:'1.2-2' }} €</span>
-    </div>
-    <div class="flex justify-between text-xs font-black border-t border-slate-400 pt-1 text-slate-950">
-      <span>ΣΥΝΟΛΟ:</span>
-      <span>{{ (invoice().totals.totalGrossValue || 0) | number:'1.2-2' }} €</span>
-    </div>
-  </div>
+      <div class="avoid-break mt-2">
+        <div class="py-2 border-b border-dashed border-slate-400 space-y-1 text-right">
+          <div class="flex justify-between text-[10px]">
+            <span>ΚΑΘΑΡΗ ΑΞΙΑ:</span>
+            <span>{{ (invoice().totals.totalNetValue || 0) | number:'1.2-2' }} €</span>
+          </div>
+          <div class="flex justify-between text-[10px]">
+            <span>Φ.Π.Α.:</span>
+            <span>{{ (invoice().totals.totalVatAmount || 0) | number:'1.2-2' }} €</span>
+          </div>
+          <div class="flex justify-between text-xs font-black border-t border-slate-400 pt-1 text-slate-950">
+            <span>ΣΥΝΟΛΟ:</span>
+            <span>{{ (invoice().totals.totalGrossValue || 0) | number:'1.2-2' }} €</span>
+          </div>
 
-  <div class="pt-3 text-center space-y-1.5">
-    @if (invoice().qrUrl) {
-      <div class="flex justify-center">
-        <div class="w-24 h-24 p-0.5 bg-white border border-slate-300">
-          <img 
-            [src]="getQrImageUrl(invoice().qrUrl)" 
-            alt="AADE QR" 
-            class="w-full h-full object-contain" 
-            loading="eager"
-          />
+          @if (invoice().previousBalance !== undefined && invoice().previousBalance !== null) {
+            <div class="flex justify-between text-[9.5px] pt-1">
+              <span>ΠΡΟΗΓ. ΥΠΟΛΟΙΠΟ:</span>
+              <span>{{ invoice().previousBalance | number:'1.2-2' }} €</span>
+            </div>
+            <div class="flex justify-between text-[9.5px] font-bold">
+              <span>ΝΕΟ ΥΠΟΛΟΙΠΟ:</span>
+              <span>{{ ((invoice().previousBalance || 0) + (invoice().totals.totalGrossValue || 0)) | number:'1.2-2' }} €</span>
+            </div>
+          }
+        </div>
+
+        <!-- Optional Notes & Bank Accounts -->
+        @if (invoice().notes || invoice().issuer?.bankAccounts?.length) {
+          <div class="py-1.5 border-b border-dashed border-slate-400 text-[9px] space-y-0.5 text-left">
+            @if (invoice().notes) {
+              <div><span class="font-bold">ΣΗΜΕΙΩΣΕΙΣ:</span> {{ invoice().notes }}</div>
+            }
+            @if (invoice().issuer?.bankAccounts?.length) {
+              <div class="font-bold pt-0.5">ΤΡΑΠΕΖΙΚΟΙ ΛΟΓΑΡΙΑΣΜΟΙ:</div>
+              @for (bank of invoice().issuer.bankAccounts; track $index) {
+                @if (bank) {
+                  <div class="break-all">{{ bank }}</div>
+                }
+              }
+            }
+          </div>
+        }
+
+        <!-- Optional Signatures (B2B / Dispatch) -->
+        @if (!isRetailDoc(invoice().invoiceType)) {
+          <div class="grid grid-cols-2 gap-2 py-2 border-b border-dashed border-slate-400 text-center text-[9px]">
+            <div>
+              <div class="font-bold">ΕΚΔΟΣΗ</div>
+              <div class="h-6 border-b border-slate-400"></div>
+            </div>
+            <div>
+              <div class="font-bold">ΠΑΡΑΛΑΒΗ</div>
+              <div class="h-6 border-b border-slate-400"></div>
+            </div>
+          </div>
+        }
+
+        <div class="pt-3 text-center space-y-1.5">
+          @if (invoice().qrUrl) {
+            <div class="flex justify-center">
+              <div class="w-24 h-24 p-0.5 bg-white border border-slate-300">
+                <img 
+                  [src]="getQrImageUrl(invoice().qrUrl)" 
+                  alt="AADE QR" 
+                  class="w-full h-full object-contain" 
+                  loading="eager"
+                />
+              </div>
+            </div>
+          }
+          <div class="text-[9px] space-y-0.5">
+            <p class="font-bold">myDATA AADE</p>
+            <p class="break-all">MARK: {{ invoice().mark || '—' }}</p>
+            <p class="break-all text-[8px] text-slate-600">UID: {{ invoice().uid || '—' }}</p>
+          </div>
+          <p class="text-[8px] text-slate-500 pt-1">Ευχαριστούμε για την προτίμησή σας!</p>
         </div>
       </div>
-    }
-    <div class="text-[9px] space-y-0.5">
-      <p class="font-bold">myDATA AADE</p>
-      <p class="break-all">MARK: {{ invoice().mark || '—' }}</p>
-      <p class="break-all text-[8px] text-slate-600">UID: {{ invoice().uid || '—' }}</p>
     </div>
-    <p class="text-[8px] text-slate-500 pt-1">Ευχαριστούμε για την προτίμησή σας!</p>
-  </div>
-</div>
-</div>
     </div>
   }
 }

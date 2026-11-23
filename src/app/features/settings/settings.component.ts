@@ -77,6 +77,7 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
         <div>
           <h1 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Ρυθμίσεις Καταστήματος &amp; myDATA</h1>
           <p class="text-xs text-slate-500 mt-1">Φορολογική ταυτότητα, συνδρομή και διαπιστευτήρια AADE API</p>
+          
         </div>
       </div>
 
@@ -199,21 +200,177 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
         <!-- Section 1: Business Identity & Tax Details -->
         <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
           <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700">Φορολογική Ταυτότητα (Εκδότης)</h2>
-          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+          <!-- Activity, Contact & Website (for 80mm Block 1 & A4 Header) -->
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs">
             <div>
-              <label class="block font-semibold text-slate-700 mb-1">Α.Φ.Μ. Καταστήματος *</label>
-              <input type="text" formControlName="afm" maxlength="9" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="9 ψηφία" />
+              <label class="block font-semibold text-slate-700 mb-1">Α.Φ.Μ. Επιχείρησης *</label>
+              <input
+                type="text"
+                formControlName="afm"
+                maxlength="9"
+                class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                placeholder="9 ψηφία"
+              />
             </div>
             <div>
-              <label class="block font-semibold text-slate-700 mb-1">Δ.Ο.Υ. *</label>
-              <input type="text" formControlName="doy" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="π.χ. Δ' ΑΘΗΝΩΝ" />
+              <label class="block font-semibold text-slate-700 mb-1">Δ.Ο.Υ.</label>
+              <input
+                type="text"
+                formControlName="doy"
+                class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                placeholder="π.χ. Δ' ΑΘΗΝΩΝ"
+              />
             </div>
             <div class="sm:col-span-2">
-              <label class="block font-semibold text-slate-700 mb-1">Επωνυμία / Εμπορικός Τίτλος *</label>
-              <input type="text" formControlName="legalName" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500" placeholder="π.χ. ΜΙΝΙ ΜΑΡΚΕΤ Ο ΠΕΤΡΟΣ" />
+              <label class="block font-semibold text-slate-700 mb-1">Επωνυμία Επιχείρησης *</label>
+              <input
+                type="text"
+                formControlName="legalName"
+                class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                placeholder="π.χ. MARANTH ΜΟΝ. ΙΚΕ"
+              />
+            </div>
+          </div>
+
+          <!-- Company Logo Upload & Preview -->
+          <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div class="flex items-center gap-3">
+              @if (form.get('logoUrl')?.value) {
+                <div class="h-12 px-2.5 rounded-xl border border-slate-200 bg-white flex items-center justify-center">
+                  <img [src]="form.get('logoUrl')?.value" alt="Company Logo" class="max-h-10 w-auto object-contain" />
+                </div>
+              } @else {
+                <div class="h-12 w-20 rounded-xl border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center text-[10px] text-slate-400 font-semibold">
+                  Χωρίς Logo
+                </div>
+              }
+              <div>
+                <span class="block font-semibold text-slate-800">Λογότυπο Επιχείρησης (για Α4 &amp; 80mm)</span>
+                <span class="text-[11px] text-slate-500">PNG ή JPG — βελτιστοποιείται αυτόματα για θερμική εκτύπωση</span>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <label class="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold cursor-pointer transition">
+                <span>🖼️ Επιλογή Logo</span>
+                <input type="file" accept="image/png,image/jpeg,image/webp" (change)="onLogoFileSelected($event)" class="hidden" />
+              </label>
+              @if (form.get('logoUrl')?.value) {
+                <button
+                  type="button"
+                  (click)="clearLogo()"
+                  class="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold cursor-pointer transition"
+                >
+                  Αφαίρεση
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- 4 Bank Accounts (Editable Greek Bank Dropdown + IBAN) -->
+          <div class="pt-3 border-t border-slate-100 space-y-3 text-xs">
+            <div>
+              <span class="block font-bold text-slate-800">
+                Τραπεζικοί Λογαριασμοί / IBAN (έως 4 — εκτυπώνονται στο υποσέλιδο εφόσον συμπληρωθούν)
+              </span>
+            </div>
+
+            <!-- Shared Datalist of Greek Banks (Dropdown + Free Typing) -->
+            <datalist id="greek-banks-list">
+              <option value="ΕΘΝΙΚΗ ΤΡΑΠΕΖΑ"></option>
+              <option value="ALPHA BANK"></option>
+              <option value="ΤΡΑΠΕΖΑ ΠΕΙΡΑΙΩΣ"></option>
+              <option value="EUROBANK"></option>
+              <option value="OPTIMA BANK"></option>
+              <option value="ATTICA BANK"></option>
+              <option value="VIVA WALLET"></option>
+              <option value="REVOLUT"></option>
+            </datalist>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <!-- Slot 1 -->
+              <div class="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 space-y-1.5">
+                <span class="block text-[11px] font-bold text-slate-600">Λογαριασμός 1</span>
+                <div class="grid grid-cols-5 gap-2">
+                  <input
+                    type="text"
+                    list="greek-banks-list"
+                    formControlName="bankName1"
+                    class="col-span-2 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Τράπεζα..."
+                  />
+                  <input
+                    type="text"
+                    formControlName="bankIban1"
+                    class="col-span-3 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 uppercase focus:ring-2 focus:ring-indigo-500"
+                    placeholder="GR00 0000 0000..."
+                  />
+                </div>
+              </div>
+
+              <!-- Slot 2 -->
+              <div class="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 space-y-1.5">
+                <span class="block text-[11px] font-bold text-slate-600">Λογαριασμός 2</span>
+                <div class="grid grid-cols-5 gap-2">
+                  <input
+                    type="text"
+                    list="greek-banks-list"
+                    formControlName="bankName2"
+                    class="col-span-2 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Τράπεζα..."
+                  />
+                  <input
+                    type="text"
+                    formControlName="bankIban2"
+                    class="col-span-3 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 uppercase focus:ring-2 focus:ring-indigo-500"
+                    placeholder="GR00 0000 0000..."
+                  />
+                </div>
+              </div>
+
+              <!-- Slot 3 -->
+              <div class="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 space-y-1.5">
+                <span class="block text-[11px] font-bold text-slate-600">Λογαριασμός 3</span>
+                <div class="grid grid-cols-5 gap-2">
+                  <input
+                    type="text"
+                    list="greek-banks-list"
+                    formControlName="bankName3"
+                    class="col-span-2 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Τράπεζα..."
+                  />
+                  <input
+                    type="text"
+                    formControlName="bankIban3"
+                    class="col-span-3 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 uppercase focus:ring-2 focus:ring-indigo-500"
+                    placeholder="GR00 0000 0000..."
+                  />
+                </div>
+              </div>
+
+              <!-- Slot 4 -->
+              <div class="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 space-y-1.5">
+                <span class="block text-[11px] font-bold text-slate-600">Λογαριασμός 4</span>
+                <div class="grid grid-cols-5 gap-2">
+                  <input
+                    type="text"
+                    list="greek-banks-list"
+                    formControlName="bankName4"
+                    class="col-span-2 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Τράπεζα..."
+                  />
+                  <input
+                    type="text"
+                    formControlName="bankIban4"
+                    class="col-span-3 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 uppercase focus:ring-2 focus:ring-indigo-500"
+                    placeholder="GR00 0000 0000..."
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
+
 
         <!-- Section 2: Store Physical Address -->
         <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
@@ -477,7 +634,21 @@ export class SettingsComponent implements OnInit {
     validUntil: new FormControl<string | null>(null),
     maxMonthlyDocuments: [1000],
     currentMonthDocumentCount: [0],
-    tenantId: ['']
+    tenantId: [''],
+    activity: [''],
+    phone: [''],
+    email: [''],
+    website: [''],
+    logoUrl: [''],
+    defaultNotes: [''],
+    bankName1: [''],
+    bankIban1: [''],
+    bankName2: [''],
+    bankIban2: [''],
+    bankName3: [''],
+    bankIban3: [''],
+    bankName4: [''],
+    bankIban4: [''],
   });
 
   async ngOnInit(): Promise<void> {
@@ -524,6 +695,20 @@ export class SettingsComponent implements OnInit {
         validUntil: saved.validUntil ?? null,
         maxMonthlyDocuments: saved.maxMonthlyDocuments ?? 1000,
         currentMonthDocumentCount: saved.currentMonthDocumentCount ?? 0,
+        activity: saved.activity ?? '',
+        phone: saved.phone ?? '',
+        email: saved.email ?? '',
+        website: saved.website ?? '',
+        logoUrl: saved.logoUrl ?? '',
+        defaultNotes: saved.defaultNotes ?? '',
+        bankName1: saved.bankName1 ?? '',
+        bankIban1: saved.bankIban1 ?? '',
+        bankName2: saved.bankName2 ?? '',
+        bankIban2: saved.bankIban2 ?? '',
+        bankName3: saved.bankName3 ?? '',
+        bankIban3: saved.bankIban3 ?? '',
+        bankName4: saved.bankName4 ?? '',
+        bankIban4: saved.bankIban4 ?? '',
       });
     }
   }
@@ -586,6 +771,32 @@ export class SettingsComponent implements OnInit {
         maxMonthlyDocuments: val.maxMonthlyDocuments ?? 1000,
         currentMonthDocumentCount: val.currentMonthDocumentCount ?? 0,
         updatedAt: new Date().toISOString(),
+        activity: (val.activity || '').trim(),
+        phone: (val.phone || '').trim(),
+        email: (val.email || '').trim(),
+        website: (val.website || '').trim(),
+        logoUrl: (val.logoUrl || '').trim(),
+        defaultNotes: (val.defaultNotes || '').trim(),
+        bankName1: (val.bankName1 || '').trim(),
+        bankIban1: (val.bankIban1 || '').trim(),
+        bankName2: (val.bankName2 || '').trim(),
+        bankIban2: (val.bankIban2 || '').trim(),
+        bankName3: (val.bankName3 || '').trim(),
+        bankIban3: (val.bankIban3 || '').trim(),
+        bankName4: (val.bankName4 || '').trim(),
+        bankIban4: (val.bankIban4 || '').trim(),
+        bankAccounts: [
+          { name: val.bankName1, iban: val.bankIban1 },
+          { name: val.bankName2, iban: val.bankIban2 },
+          { name: val.bankName3, iban: val.bankIban3 },
+          { name: val.bankName4, iban: val.bankIban4 },
+        ]
+          .filter((b) => (b.iban || '').trim().length > 0)
+          .map((b) => {
+            const name = (b.name || '').trim();
+            const iban = (b.iban || '').trim();
+            return name ? `${name}: ${iban}` : iban;
+          }),
       };
 
       // 1. Initial save to Dexie and seed active tenant identity
@@ -647,6 +858,8 @@ export class SettingsComponent implements OnInit {
     if (!max || isNaN(max) || max <= 0) {
       return 5;
     }
+
+    
 
     const pct = Math.round((current / max) * 100);
     return Math.min(100, Math.max(0, pct));
@@ -718,5 +931,36 @@ public async onDownloadBackup(): Promise<void> {
     } finally {
       input.value = '';
     }
+  }
+
+  public onLogoFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const maxH = 90;
+        const scale = img.height > maxH ? maxH / img.height : 1;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressedDataUrl = canvas.toDataURL('image/png', 0.9);
+        this.form.patchValue({ logoUrl: compressedDataUrl });
+        this.cdr.markForCheck();
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+    input.value = '';
+  }
+
+  public clearLogo(): void {
+    this.form.patchValue({ logoUrl: '' });
+    this.cdr.markForCheck();
   }
 }

@@ -10,7 +10,14 @@ export const routes: Routes = [
   },
   {
     path: 'reset-password',
-    loadComponent: () => import('./features/auth/reset-password.component').then(m => m.ResetPasswordComponent),
+    loadComponent: () =>
+      import('./features/auth/reset-password.component').then((m) => m.ResetPasswordComponent),
+  },
+  {
+    path: 'help',
+    loadComponent: () =>
+      import('./features/help/help.component').then((m) => m.HelpComponent),
+    title: 'Βοήθεια & Συχνές Ερωτήσεις (FAQ) myDATA — Maranth Hub',
   },
   {
     path: '',
@@ -58,12 +65,6 @@ export const routes: Routes = [
           ),
         title: 'Ρυθμίσεις — Maranth Hub',
       },
-      {
-    path: 'help',
-    loadComponent: () =>
-      import('./features/help/help.component').then((m) => m.HelpComponent),
-    title: 'Βοήθεια & Οδηγός Χρήσης | Maranth Hub',
-  },
     ],
   },
   {

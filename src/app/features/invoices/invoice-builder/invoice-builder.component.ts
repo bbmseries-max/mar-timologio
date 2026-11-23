@@ -167,6 +167,8 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     documentNumber: [1, [Validators.required, Validators.min(1)]],
     issueDate: [new Date().toISOString().substring(0, 10), Validators.required],
     invoiceType: ['1.1', Validators.required],
+    notes: [''],
+    previousBalance: [null as number | null],
     customer: this.fb.group({
       afm: ['', [Validators.required, greekAfmValidator()]],
       legalName: ['', Validators.required],
@@ -384,8 +386,11 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     if (currentTenantId) {
       const myBusiness: any = await this.db.getSettings(currentTenantId);
       if (myBusiness) {
-        tenantDefaultSeries = myBusiness.defaultSeries || 'Α';
-      }
+  tenantDefaultSeries = myBusiness.defaultSeries || 'Α';
+  if (myBusiness.defaultNotes && !this.invoiceForm.get('notes')?.value) {
+    this.invoiceForm.patchValue({ notes: myBusiness.defaultNotes }, { emitEvent: false });
+  }
+}
     }
 
     const targetDraftId =
@@ -621,6 +626,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
         tradeName: settings?.companyName || settings?.legalName || 'MARANTH MON IKE',
         afm: settings?.afm || '067424104',
         doy: settings?.doy || 'ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ',
+        activity: settings?.activity || '',
         branch: Number(settings?.branch ?? 0),
         address: {
           street: settings?.street || 'ΒΑΡΔΟΥΝΙΩΤΗ',
@@ -630,6 +636,9 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
         },
         phone: settings?.phone || '',
         email: settings?.email || '',
+        website: settings?.website || '',
+        logoUrl: settings?.logoUrl || '',
+        bankAccounts: settings?.bankAccounts || [],
       },
       customer: {
         id: custRaw?.id || 'cust-1',
@@ -644,6 +653,11 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
           city: custRaw.city || '',
         },
       },
+      notes: (formVal.notes || settings?.defaultNotes || '').trim(),
+      previousBalance:
+        formVal.previousBalance !== null && formVal.previousBalance !== ''
+          ? Number(formVal.previousBalance)
+          : undefined,
       lines: this.lineItemsSignal(),
       totals: {
         totalNetValue: Number(totals.totalNetValue || 0),
@@ -1069,6 +1083,8 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
       documentNumber: 1,
       issueDate: new Date().toISOString().substring(0, 10),
       invoiceType: '1.1',
+      notes: s.defaultNotes || '',
+      previousBalance: null,
       customer: {
         afm: '',
         legalName: '',

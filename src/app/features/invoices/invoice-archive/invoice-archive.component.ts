@@ -181,7 +181,11 @@ export class InvoiceArchiveComponent implements OnInit {
 
   public async openPrintModal(inv: LocalInvoiceRecord): Promise<void> {
     const tenantId = this.auth.currentTenantId();
-    const settings = tenantId ? await this.db.getSettingsForTenant(tenantId) : null;
+    let settings: any = tenantId ? await this.db.getSettingsForTenant(tenantId) : null;
+    if (!settings?.afm) {
+      const all = await this.db.settings.toArray();
+      if (all.length > 0) settings = all[0];
+    }
     const s = (settings || {}) as any;
 
     let parsed: any = {};
@@ -194,6 +198,12 @@ export class InvoiceArchiveComponent implements OnInit {
     const lines = parsed.lines || [];
     const isDispatch = inv.invoiceType === '9.1' || inv.invoiceType === '9.2' || inv.invoiceType === '9.3';
 
+    const rawPrevBal = parsed.previousBalance;
+    const resolvedPrevBal =
+      rawPrevBal !== null && rawPrevBal !== undefined && rawPrevBal !== '' && !isNaN(Number(rawPrevBal))
+        ? Number(rawPrevBal)
+        : undefined;
+
     const printable: PrintableInvoiceData = {
       series: inv.series,
       documentNumber: Number(inv.documentNumber || 1),
@@ -205,6 +215,7 @@ export class InvoiceArchiveComponent implements OnInit {
         tradeName: s.tradeName || s.commercialTitle,
         afm: s.afm || '',
         doy: s.doy,
+        activity: s.activity || '',
         branch: Number(s.branch ?? 0),
         address: {
           street: s.street || s.address?.street || '',
@@ -212,8 +223,11 @@ export class InvoiceArchiveComponent implements OnInit {
           postalCode: s.postalCode || s.address?.postalCode || '',
           city: s.city || s.address?.city || '',
         },
-        phone: s.phone,
-        email: s.email,
+        phone: s.phone || '',
+        email: s.email || '',
+        website: s.website || '',
+        logoUrl: s.logoUrl || '',
+        bankAccounts: s.bankAccounts || [],
       },
       customer: {
         id: parsed.customer?.id || crypto.randomUUID(),
@@ -230,11 +244,15 @@ export class InvoiceArchiveComponent implements OnInit {
           city: parsed.customer?.city || '',
         },
       },
+      notes: (parsed.notes || s.defaultNotes || '').trim(),
+      previousBalance: resolvedPrevBal,
       lines: lines.map((l: any, idx: number) => ({
         id: l.id || `l-${idx}`,
         lineNumber: idx + 1,
         description: l.description || '',
         quantity: Number(l.quantity) || 1,
+        measurementUnit: l.measurementUnit ?? l.unitMeasurement ?? 1,
+        unitMeasurement: l.unitMeasurement ?? l.measurementUnit ?? 1,
         unitPrice: isDispatch ? 0 : Number(l.unitPrice || 0),
         discountPercentage: Number(l.discountPercentage || 0),
         netValue: isDispatch ? 0 : Number(l.netValue || 0),

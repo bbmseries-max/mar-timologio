@@ -51,33 +51,33 @@ import { EnvironmentBannerComponent } from '@features/invoices/invoice-builder/e
           <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
 
             <!-- BRAND / LOGO & TENANT INFO -->
-            <div class="flex items-center gap-6">
-              <a routerLink="/invoices/new" class="flex items-center gap-3 group cursor-pointer">
+            <div class="flex items-center gap-5 min-w-0">
+              <a routerLink="/invoices/new" class="flex items-center gap-3 group cursor-pointer shrink-0">
                 <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-black text-white text-base shadow-sm ring-1 ring-white/20 group-hover:scale-105 transition-transform">
                   M
                 </div>
                 <div>
                   <div class="flex items-center gap-2">
-                    <span class="font-black text-sm sm:text-base tracking-tight text-white uppercase leading-tight">
+                    <span class="font-black text-sm sm:text-base tracking-tight text-white uppercase leading-tight whitespace-nowrap">
                       Maranth Hub
                     </span>
                     <span class="text-[9px] font-mono font-bold bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-500/30">
                       ERP
                     </span>
                   </div>
-                  <span class="text-[11px] font-semibold text-slate-400 block leading-none truncate max-w-[150px] sm:max-w-[220px] mt-0.5" [title]="auth.activeTenant()?.name || ''">
+                  <span class="text-[11px] font-semibold text-slate-400 block leading-none truncate max-w-[150px] sm:max-w-[200px] mt-0.5" [title]="auth.activeTenant()?.name || ''">
                     {{ auth.activeTenant()?.name || 'Επιχείρηση' }}
                   </span>
                 </div>
               </a>
 
               <!-- DESKTOP NAVIGATION MENU -->
-              <nav class="hidden md:flex items-center gap-1.5">
+              <nav class="hidden md:flex items-center gap-1">
                 @if (auth.canIssueInvoices()) {
                   <a
                     routerLink="/invoices/new"
                     routerLinkActive="bg-white/10 text-white font-bold border-white/20 shadow-xs"
-                    class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent transition-all flex items-center gap-1.5 cursor-pointer"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                   >
                     <span class="text-amber-400 text-sm">⚡</span>
                     <span>ΕΚΔΟΣΗ</span>
@@ -87,25 +87,17 @@ import { EnvironmentBannerComponent } from '@features/invoices/invoice-builder/e
                 <a
                   routerLink="/invoices"
                   routerLinkActive="bg-white/10 text-white font-bold border-white/20 shadow-xs"
-                  class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent transition-all flex items-center gap-1.5 cursor-pointer"
+                  class="px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                 >
                   <span class="text-slate-400 text-sm">📋</span>
                   <span>ΑΡΧΕΙΟ Παραστατικών</span>
                 </a>
-                <a
-          routerLink="/help"
-          routerLinkActive="bg-white/10 text-white font-bold border-white/20 shadow-xs"
-          class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent transition-all flex items-center gap-1.5 cursor-pointer"
-        >
-          <span class="text-sky-400 text-sm">📘</span>
-          <span>ΒΟΗΘΕΙΑ &amp; FAQ</span>
-        </a>
 
                 @if (auth.featureFlags().enableGoodsMovement && auth.canIssueInvoices()) {
                   <a
                     routerLink="/delivery-notes"
                     routerLinkActive="bg-white/10 text-white font-bold border-white/20 shadow-xs"
-                    class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent transition-all flex items-center gap-1.5 cursor-pointer"
+                    class="px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                   >
                     <span class="text-slate-400 text-sm">🚚</span>
                     <span>ΔΕΛΤΙΑ Διακίνησης</span>
@@ -113,16 +105,24 @@ import { EnvironmentBannerComponent } from '@features/invoices/invoice-builder/e
                       Van
                     </span>
                   </a>
-                 
                 }
+
+                <a
+                  routerLink="/help"
+                  routerLinkActive="bg-white/10 text-white font-bold border-white/20 shadow-xs"
+                  class="px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                >
+                  <span class="text-sky-400 text-sm">📘</span>
+                  <span>ΒΟΗΘΕΙΑ &amp; FAQ</span>
+                </a>
               </nav>
             </div>
 
             <!-- RIGHT UTILITY CONTROLS -->
-            <div class="flex items-center gap-2.5 sm:gap-3">
+            <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
               <!-- Tenant AFM Badge -->
               @if (auth.activeTenant()?.fiscalIdentity?.afm) {
-                <div class="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300 shadow-2xs">
+                <div class="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300 shadow-2xs whitespace-nowrap">
                   <span class="text-slate-500 uppercase font-sans text-[10px] font-bold">ΑΦΜ:</span>
                   <span class="font-bold text-white select-all">{{ auth.activeTenant()?.fiscalIdentity?.afm }}</span>
                 </div>
@@ -137,20 +137,12 @@ import { EnvironmentBannerComponent } from '@features/invoices/invoice-builder/e
               >
                 <span class="text-base leading-none">⚙️</span>
               </a>
-              <a
-          routerLink="/help"
-          routerLinkActive="text-white font-bold bg-white/10 border-white/20"
-          class="flex-1 flex flex-col items-center justify-center py-1.5 px-2 rounded-lg text-slate-400 hover:text-white transition-all text-[11px] border border-transparent"
-        >
-          <span class="text-sm">📘</span>
-          <span>ΒΟΗΘΕΙΑ</span>
-             </a>
 
               <!-- Logout Button -->
               <button
                 type="button"
                 (click)="auth.logout()"
-                class="h-10 px-3.5 rounded-xl text-xs font-bold text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-all active:scale-[0.98] cursor-pointer flex items-center gap-1.5"
+                class="h-10 px-3.5 rounded-xl text-xs font-bold text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-all active:scale-[0.98] cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
               >
                 <span class="text-xs">🚪</span>
                 <span>Έξοδος</span>
@@ -198,29 +190,41 @@ import { EnvironmentBannerComponent } from '@features/invoices/invoice-builder/e
           <router-outlet></router-outlet>
         </main>
 
-        <footer class="border-t border-slate-200/80 py-6 px-4 text-xs text-slate-500 bg-white/80 backdrop-blur-xs no-print">
+        <footer class="border-t border-slate-800 py-6 px-4 text-xs text-slate-400 bg-slate-950 no-print">
           <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
             <div class="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 text-center sm:text-left">
-              <span class="font-semibold text-slate-700">&copy; 2026 MARANTH Software Systems. All rights reserved.</span>
-              <span class="hidden sm:inline text-slate-300">&bull;</span>
-              <span class="text-[11px] text-slate-400 font-mono">AADE myDATA v1.0.8</span>
+              <span class="font-semibold text-slate-200">&copy; 2026 MARANTH Software Systems. All rights reserved.</span>
+              <span class="hidden sm:inline text-slate-700">&bull;</span>
+              <span class="text-[11px] text-blue-300/80 font-mono">AADE myDATA v1.0.8</span>
             </div>
 
-            <nav aria-label="Νομικές Πληροφορίες" class="flex items-center gap-4 font-semibold">
+            <nav aria-label="Νομικές Πληροφορίες" class="flex flex-wrap items-center justify-center gap-3 sm:gap-4 font-semibold">
+              <a
+                routerLink="/help"
+                class="text-xs font-bold text-sky-300 hover:text-white underline-offset-4 hover:underline transition flex items-center gap-1"
+              >
+                <span>📘</span>
+                <span>Οδηγός Χρήσης &amp; FAQ myDATA</span>
+              </a>
+
+              <span class="text-slate-700">|</span>
+
               <a
                 href="https://www.maranth.gr/privacy"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-slate-600 hover:text-indigo-600 underline-offset-4 hover:underline transition"
+                class="text-slate-300 hover:text-white underline-offset-4 hover:underline transition"
               >
                 Πολιτική Απορρήτου (GDPR)
               </a>
-              <span class="text-slate-300">|</span>
+
+              <span class="text-slate-700">|</span>
+
               <a
                 href="https://www.maranth.gr/terms"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-slate-600 hover:text-indigo-600 underline-offset-4 hover:underline transition"
+                class="text-slate-300 hover:text-white underline-offset-4 hover:underline transition"
               >
                 Όροι Χρήσης
               </a>

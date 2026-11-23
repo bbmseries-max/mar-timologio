@@ -159,10 +159,9 @@ export class InvoicePrintComponent {
   }
 
   public isDispatch(): boolean {
-    const inv = this.invoice();
-    const t = String(inv?.invoiceType || '');
-    return ['9.1', '9.2', '9.3', '1.2'].includes(t) || !!inv?.movement;
-  }
+  const t = String(this.invoice()?.invoiceType || '').trim();
+  return t === '9.1' || t === '9.2' || t === '9.3';
+}
 
   public isRetailDoc(type?: string): boolean {
     const t = type || this.invoice()?.invoiceType;

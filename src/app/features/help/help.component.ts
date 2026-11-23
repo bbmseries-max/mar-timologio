@@ -1,6 +1,16 @@
-import { Component, ChangeDetectionStrategy, signal, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import {
+  Component,
+  ChangeDetectionStrategy,
+  signal,
+  computed,
+  inject,
+  OnInit,
+  OnDestroy,
+} from '@angular/core';
+import { CommonModule, DOCUMENT } from '@angular/common';
+import { Meta } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
+import { AuthTenantService } from '../../core/services/auth-tenant.service';
 
 interface HelpItem {
   id: string;
@@ -17,6 +27,26 @@ interface HelpItem {
   imports: [CommonModule, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <!-- Public Guest Top Bar (Shown only when opened by search engines / unauthenticated visitors) -->
+    @if (!auth.isAuthenticated()) {
+      <header class="sticky top-0 z-40 w-full bg-slate-950 text-white border-b border-slate-800 shadow-md">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <a routerLink="/login" class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-black text-white text-sm">
+              M
+            </div>
+            <span class="font-black text-sm tracking-tight uppercase">Maranth Hub ERP</span>
+          </a>
+          <a
+            routerLink="/login"
+            class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition"
+          >
+            Σύνδεση στο ERP →
+          </a>
+        </div>
+      </header>
+    }
+
     <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
       <!-- Header -->
       <div class="bg-slate-950 text-white rounded-2xl p-6 sm:p-8 border border-slate-800 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -34,17 +64,15 @@ interface HelpItem {
         </div>
 
         <a
-          routerLink="/invoices/new"
+          [routerLink]="auth.isAuthenticated() ? '/invoices/new' : '/login'"
           class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-sm transition shrink-0"
         >
           <span>⚡</span>
-          <span>Έκδοση Παραστατικού</span>
+          <span>{{ auth.isAuthenticated() ? 'Έκδοση Παραστατικού' : 'Δοκιμάστε το ERP' }}</span>
         </a>
       </div>
 
-      <!-- =================================================================== -->
-      <!-- EXECUTIVE ENTRY BRIEFING: AADE LAW, WHAT CHANGES & WHO WE SERVE     -->
-      <!-- =================================================================== -->
+      <!-- EXECUTIVE ENTRY BRIEFING: AADE LAW, WHAT CHANGES & WHO WE SERVE -->
       <section class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-6 sm:p-7 space-y-6">
         <div class="border-b border-slate-100 pb-4">
           <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600">
@@ -58,9 +86,7 @@ interface HelpItem {
           </p>
         </div>
 
-        <!-- 3-Column Analysis Grid -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          <!-- Column 1: What Changes -->
           <div class="p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 space-y-2">
             <div class="flex items-center gap-2 font-bold text-amber-950 text-sm">
               <span>⚖️</span>
@@ -73,7 +99,6 @@ interface HelpItem {
             </ul>
           </div>
 
-          <!-- Column 2: What We Already Have & Cover -->
           <div class="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200/80 space-y-2">
             <div class="flex items-center gap-2 font-bold text-emerald-950 text-sm">
               <span>🛡️</span>
@@ -86,7 +111,6 @@ interface HelpItem {
             </ul>
           </div>
 
-          <!-- Column 3: Who We Offer Our App To -->
           <div class="p-4 rounded-xl bg-indigo-50/70 border border-indigo-200/80 space-y-2">
             <div class="flex items-center gap-2 font-bold text-indigo-950 text-sm">
               <span>🏢</span>
@@ -175,7 +199,12 @@ interface HelpItem {
     </div>
   `,
 })
-export class HelpComponent {
+export class HelpComponent implements OnInit, OnDestroy {
+  public readonly auth = inject(AuthTenantService);
+  private readonly meta = inject(Meta);
+  private readonly doc = inject(DOCUMENT);
+  private schemaScriptEl: HTMLScriptElement | null = null;
+
   public readonly searchQuery = signal<string>('');
   public readonly selectedCategory = signal<'ALL' | HelpItem['category']>('ALL');
 
@@ -290,7 +319,7 @@ export class HelpComponent {
     const q = this.searchQuery().trim().toLowerCase();
     const cat = this.selectedCategory();
 
-    return this.items.filter(item => {
+    return this.items.filter((item) => {
       const matchesCat = cat === 'ALL' || item.category === cat;
       if (!matchesCat) return false;
       if (!q) return true;
@@ -299,10 +328,47 @@ export class HelpComponent {
         item.question.toLowerCase().includes(q) ||
         item.answer.toLowerCase().includes(q) ||
         (item.badge && item.badge.toLowerCase().includes(q)) ||
-        (item.tips && item.tips.some(t => t.toLowerCase().includes(q)))
+        (item.tips && item.tips.some((t) => t.toLowerCase().includes(q)))
       );
     });
   });
+
+  ngOnInit(): void {
+    this.meta.updateTag({
+      name: 'description',
+      content:
+        'Οδηγός χρήσης Maranth Hub ERP: ηλεκτρονική τιμολόγηση AADE myDATA (1.1, 1.2, 1.3, 11.1, 11.2), ψηφιακά δελτία αποστολής (9.1, 9.2, 9.3), έλεγχος ΑΦΜ GSIS & EU VIES και εκτύπωση A4/80mm.',
+    });
+
+    const faqSchema = {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: this.items.map((item) => ({
+        '@type': 'Question',
+        name: item.question,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: item.tips?.length
+            ? `${item.answer} ${item.tips.join(' ')}`
+            : item.answer,
+        },
+      })),
+    };
+
+    const script = this.doc.createElement('script');
+    script.type = 'application/ld+json';
+    script.id = 'maranth-faq-schema';
+    script.text = JSON.stringify(faqSchema);
+    this.doc.head.appendChild(script);
+    this.schemaScriptEl = script;
+  }
+
+  ngOnDestroy(): void {
+    if (this.schemaScriptEl) {
+      this.schemaScriptEl.remove();
+      this.schemaScriptEl = null;
+    }
+  }
 
   public onSearch(event: Event): void {
     const input = event.target as HTMLInputElement;
