@@ -163,17 +163,17 @@
       <table class="w-full border-collapse text-[10.5px]">
         <thead>
           <tr class="bg-slate-900 text-white text-[9.5px] uppercase tracking-wider">
-            <th class="py-2 px-2 text-left w-8">#</th>
-            <th class="py-2 px-2 text-left">Περιγραφή Είδους</th>
-            <th class="py-2 px-2 text-right w-20">Ποσ.</th>
+            <th class="py-2 px-1.5 text-left w-7 whitespace-nowrap">#</th>
+            <th class="py-2 px-1.5 text-left whitespace-nowrap">Περιγραφή</th>
+            <th class="py-2 px-1.5 text-right w-20 whitespace-nowrap">Ποσ.</th>
             @if (!isDispatch()) {
-              <th class="py-2 px-2 text-right w-20">Τιμή Μον.</th>
-              <th class="py-2 px-2 text-right w-14">Έκπτ. %</th>
-              <th class="py-2 px-2 text-right w-20">Καθαρή</th>
-              <th class="py-2 px-2 text-right w-14">ΦΠΑ %</th>
-              <th class="py-2 px-2 text-right w-24">Σύνολο</th>
+              <th class="py-2 px-1.5 text-right w-22 whitespace-nowrap">Τιμή Μον.</th>
+              <th class="py-2 px-1.5 text-right w-15 whitespace-nowrap">Έκπτ. %</th>
+              <th class="py-2 px-1.5 text-right w-20 whitespace-nowrap">Καθαρή</th>
+              <th class="py-2 px-1.5 text-right w-15 whitespace-nowrap">ΦΠΑ %</th>
+              <th class="py-2 px-1.5 text-right w-22 whitespace-nowrap">Σύνολο</th>
             } @else {
-              <th class="py-2 px-2 text-right w-16">ΦΠΑ %</th>
+              <th class="py-2 px-1.5 text-right w-16 whitespace-nowrap">ΦΠΑ %</th>
             }
           </tr>
         </thead>
