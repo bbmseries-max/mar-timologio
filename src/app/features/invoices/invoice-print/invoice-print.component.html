@@ -306,31 +306,42 @@
         </div>
       }
 
-      <div class="text-center pb-2 border-b border-dashed border-slate-400 space-y-0.5">
-        @if (invoice().issuer?.logoUrl) {
-          <img [src]="invoice().issuer.logoUrl" alt="Logo" class="h-8 w-auto mx-auto mb-1 object-contain" />
-        }
-        <h2 class="text-sm font-black uppercase tracking-tight">
-          {{ invoice().issuer.tradeName || invoice().issuer.legalName || 'ΕΠΙΧΕΙΡΗΣΗ' }}
-        </h2>
-        @if (invoice().issuer.activity) {
-          <p class="text-[10px]">{{ invoice().issuer.activity }}</p>
-        }
-        <p>ΑΦΜ: {{ invoice().issuer.afm || '—' }} | ΔΟΥ: {{ invoice().issuer.doy || '—' }}</p>
-        @if (invoice().issuer.address; as addr) {
-          <p class="text-[10px]">{{ addr.street }} {{ addr.number }}, {{ addr.postalCode }} {{ addr.city }}</p>
-        }
-        @if (invoice().issuer.phone || invoice().issuer.email) {
-          <p class="text-[9px]">
-            @if (invoice().issuer.phone) { <span>Τηλ: {{ invoice().issuer.phone }}</span> }
-            @if (invoice().issuer.phone && invoice().issuer.email) { <span> | </span> }
-            @if (invoice().issuer.email) { <span>{{ invoice().issuer.email }}</span> }
-          </p>
-        }
-        @if (invoice().issuer.website) {
-          <p class="text-[9px]">{{ invoice().issuer.website }}</p>
-        }
-      </div>
+      <!-- A4 Issuer Left Column: Logo on the Left + Company Details on the Right -->
+<div class="flex items-center gap-3">
+  @if (invoice().issuer?.logoUrl) {
+    <img
+      [src]="invoice().issuer.logoUrl"
+      alt="Λογότυπο Επιχείρησης"
+      class="h-12 w-auto max-w-[110px] object-contain shrink-0"
+    />
+  }
+
+  <div class="space-y-0.5">
+    <h1 class="text-base font-black text-slate-900 leading-tight">
+      {{ invoice().issuer.legalName }}
+    </h1>
+    @if (invoice().issuer.activity) {
+      <p class="text-[10px] font-semibold text-slate-600">
+        {{ invoice().issuer.activity }}
+      </p>
+    }
+    <p class="text-[10px] text-slate-700 font-mono">
+      Α.Φ.Μ.: {{ invoice().issuer.afm }}
+      @if (invoice().issuer.doy) { <span>| Δ.Ο.Υ.: {{ invoice().issuer.doy }}</span> }
+    </p>
+    <p class="text-[10px] text-slate-600">
+      {{ invoice().issuer.address.street }} {{ invoice().issuer.address.number }},
+      {{ invoice().issuer.address.postalCode }} {{ invoice().issuer.address.city }}
+    </p>
+    @if (invoice().issuer.phone || invoice().issuer.email || invoice().issuer.website) {
+      <p class="text-[9.5px] text-slate-600">
+        @if (invoice().issuer.phone) { <span>Τηλ: {{ invoice().issuer.phone }}</span> }
+        @if (invoice().issuer.email) { <span> • {{ invoice().issuer.email }}</span> }
+        @if (invoice().issuer.website) { <span> • {{ invoice().issuer.website }}</span> }
+      </p>
+    }
+  </div>
+</div>
 
       <div class="py-2 border-b border-dashed border-slate-400 space-y-0.5 text-[10px]">
         <div class="font-bold text-center uppercase">{{ getDocTitle(invoice().invoiceType) }}</div>
