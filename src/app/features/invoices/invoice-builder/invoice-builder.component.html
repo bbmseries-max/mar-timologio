@@ -790,53 +790,34 @@
   <!-- ================================================================= -->
   <!-- NOTES, PREVIOUS BALANCE & TOTALS SUMMARY CARD                     -->
   <!-- ================================================================= -->
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-    <!-- Left (2 cols): Optional Notes & Previous Balance INSIDE <form> -->
-    <div class="md:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-      <div class="sm:col-span-2">
-        <label class="block font-bold text-slate-700 mb-1">Σημειώσεις Παραστατικού (προαιρ.)</label>
-        <input
-          type="text"
-          formControlName="notes"
-          class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500"
-          placeholder="π.χ. Παράδοση κατ' οίκον / Σχόλια..."
-        />
-      </div>
-      <div>
-        <label class="block font-bold text-slate-700 mb-1">Προηγ. Υπόλοιπο € (προαιρ.)</label>
-        <input
-          type="number"
-          step="0.01"
-          formControlName="previousBalance"
-          class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-mono font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500"
-          placeholder="0.00"
-        />
-      </div>
-    </div>
-
-    <!-- Right (1 col): Totals Summary Card -->
-    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-      @if (isPureDispatch) {
-        <div class="p-3 bg-amber-50 rounded-xl border border-amber-200 text-center">
-          <span class="block text-xs font-bold text-amber-900 uppercase tracking-wide">Δελτίο Διακίνησης</span>
-          <span class="text-[11px] text-amber-700">Μη τιμολογιακό παραστατικό μεταφοράς. Καθαρή αξία: 0.00 €</span>
-        </div>
-      } @else {
-        <div class="flex justify-between text-sm text-slate-600">
-          <span>Καθαρή Αξία:</span>
-          <span class="font-mono font-medium">{{ computedTotals().totalNetValue | currency: 'EUR' }}</span>
-        </div>
-        <div class="flex justify-between text-sm text-slate-600">
-          <span>Φ.Π.Α.:</span>
-          <span class="font-mono font-medium">{{ computedTotals().totalVatAmount | currency: 'EUR' }}</span>
-        </div>
-        <div class="border-t border-slate-200 pt-3 flex justify-between text-base font-bold text-slate-900">
-          <span>Σύνολο:</span>
-          <span class="font-mono text-indigo-600">{{ computedTotals().totalGrossValue | currency: 'EUR' }}</span>
-        </div>
-      }
-    </div>
+<div [class]="isPureDispatch ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-1 sm:grid-cols-3 gap-3'">
+  <div [class]="isPureDispatch ? '' : 'sm:col-span-2'">
+    <label class="block text-xs font-bold text-slate-700 mb-1">
+      Σημειώσεις Παραστατικού <span class="text-slate-400 font-normal">(προαιρ.)</span>
+    </label>
+    <input
+      type="text"
+      formControlName="notes"
+      placeholder="π.χ. Παράδοση στο κατάστημα, τρόπος πληρωμής, παρατηρήσεις..."
+      class="w-full rounded-lg border-slate-300 text-sm px-3 py-2 border bg-white text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs"
+    />
   </div>
+
+  @if (!isPureDispatch) {
+    <div>
+      <label class="block text-xs font-bold text-slate-700 mb-1">
+        Προηγ. Υπόλοιπο € <span class="text-slate-400 font-normal">(προαιρ.)</span>
+      </label>
+      <input
+        type="number"
+        step="0.01"
+        formControlName="previousBalance"
+        placeholder="0.00"
+        class="w-full rounded-lg border-slate-300 text-sm px-3 py-2 border font-mono text-right bg-white text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs"
+      />
+    </div>
+  }
+</div>
 </form>
 
   <!-- ================================================================= -->
