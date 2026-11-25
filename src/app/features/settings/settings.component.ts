@@ -442,32 +442,33 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
               </span>
             </div>
 
-            <div class="inline-flex rounded-xl border border-slate-200 p-1 bg-slate-100 self-start sm:self-center">
-              <button
-                type="button"
-                (click)="form.patchValue({ fiscalEnvironment: 'mock', isProduction: false })"
-                [class]="form.get('fiscalEnvironment')?.value === 'mock'
-                  ? 'px-2.5 py-1.5 text-xs font-bold rounded-lg bg-cyan-600 text-white shadow-xs transition cursor-pointer'
-                  : 'px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer'">
-                OFFLINE DEMO
-              </button>
-              <button
-                type="button"
-                (click)="form.patchValue({ fiscalEnvironment: 'dev', isProduction: false })"
-                [class]="(form.get('fiscalEnvironment')?.value || 'dev') === 'dev'
-                  ? 'px-2.5 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 shadow-xs transition cursor-pointer'
-                  : 'px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer'">
-                SANDBOX
-              </button>
-              <button
-                type="button"
-                (click)="form.patchValue({ fiscalEnvironment: 'production', isProduction: true })"
-                [class]="form.get('fiscalEnvironment')?.value === 'production'
-                  ? 'px-2.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white shadow-xs transition cursor-pointer'
-                  : 'px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer'">
-                PRODUCTION
-              </button>
-            </div>
+            <!-- Replace the 3 buttons in Section 3 of settings.component.ts -->
+<div class="inline-flex rounded-xl border border-slate-200 p-1 bg-slate-100 self-start sm:self-center">
+  <button
+    type="button"
+    (click)="selectEnvironment('mock')"
+    [class]="form.get('fiscalEnvironment')?.value === 'mock'
+      ? 'px-2.5 py-1.5 text-xs font-bold rounded-lg bg-cyan-600 text-white shadow-xs transition cursor-pointer'
+      : 'px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer'">
+    OFFLINE DEMO
+  </button>
+  <button
+    type="button"
+    (click)="selectEnvironment('dev')"
+    [class]="(form.get('fiscalEnvironment')?.value || 'dev') === 'dev'
+      ? 'px-2.5 py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 shadow-xs transition cursor-pointer'
+      : 'px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer'">
+    SANDBOX
+  </button>
+  <button
+    type="button"
+    (click)="selectEnvironment('production')"
+    [class]="form.get('fiscalEnvironment')?.value === 'production'
+      ? 'px-2.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white shadow-xs transition cursor-pointer'
+      : 'px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer'">
+    PRODUCTION
+  </button>
+</div>
           </div>
         </div>
 
@@ -710,6 +711,7 @@ export class SettingsComponent implements OnInit {
         bankName4: saved.bankName4 ?? '',
         bankIban4: saved.bankIban4 ?? '',
       });
+      this.cdr.markForCheck();
     }
   }
 
@@ -903,6 +905,15 @@ public async onDownloadBackup(): Promise<void> {
     } catch (err: any) {
       this.backupStatus.set(`✕ Σφάλμα εξαγωγής: ${err?.message || 'Άγνωστο σφάλμα'}`);
     }
+  }
+
+  public async selectEnvironment(env: FiscalEnvironment): Promise<void> {
+    this.form.patchValue({
+      fiscalEnvironment: env,
+      isProduction: env === 'production',
+    });
+    await this.myDataService.setEnvironment(env);
+    this.cdr.markForCheck();
   }
 
   public async onRestoreBackupFile(event: Event): Promise<void> {

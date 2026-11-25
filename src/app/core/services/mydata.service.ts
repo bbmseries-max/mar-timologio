@@ -52,7 +52,7 @@ export class MyDataService {
     void this.loadTenantEnvironment();
   }
 
-  public async setEnvironment(env: FiscalEnvironment): Promise<void> {
+ public async setEnvironment(env: FiscalEnvironment): Promise<void> {
     this.currentEnvironment.set(env);
     try {
       localStorage.setItem(this.ENV_KEY, env);
@@ -63,13 +63,30 @@ export class MyDataService {
       fiscalEnvironment: env,
       isProduction: env === 'production',
     });
+
+    const all = await this.db.settings.toArray();
+    for (const rec of all) {
+      if (rec?.id) {
+        await this.db.settings.update(rec.id, {
+          fiscalEnvironment: env,
+          isProduction: env === 'production',
+        });
+      }
+    }
   }
 
   public async loadTenantEnvironment(): Promise<void> {
+    try {
+      const saved = localStorage.getItem(this.ENV_KEY);
+      if (saved === 'production' || saved === 'dev' || saved === 'mock') {
+        this.currentEnvironment.set(saved);
+        return;
+      }
+    } catch {}
+
     const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
     let settings = await this.db.getSettings(tenantId);
 
-    // Fallback: if settings were saved under a different tenantId record, check active AFM or first record
     if (!settings) {
       const all = await this.db.settings.toArray();
       const afm = this.auth.currentTenantAfm();
