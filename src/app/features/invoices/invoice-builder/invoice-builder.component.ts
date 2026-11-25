@@ -475,21 +475,25 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
   }
 
   public async populateIssuerLoadingAddress(): Promise<void> {
-    const currentTenantId = this.auth.currentTenantId() || 'tenant_minimarket';
+    const currentTenantId = this.auth.currentTenantId();
+    const currentAfm = this.auth.currentTenantAfm();
 
     let s: any = null;
     try {
-      if ((this.db as any).settings) {
-        s = await (this.db as any).settings.get(currentTenantId);
-        if (!s) {
-          s = await (this.db as any).settings.where('tenantId').equals(currentTenantId).first();
-        }
-        if (!s) {
-          const all = await (this.db as any).settings.toArray();
-          if (all && all.length > 0) s = all[0];
-        }
-      } else if (typeof (this.db as any).getSettings === 'function') {
-        s = await (this.db as any).getSettings(currentTenantId);
+      if (currentTenantId && typeof this.db.getSettingsForTenant === 'function') {
+        s = await this.db.getSettingsForTenant(currentTenantId);
+      }
+      if (!s && currentTenantId) {
+        s = await this.db.getSettings(currentTenantId);
+      }
+      // Fallback: match by AFM or first saved settings record in Dexie
+      if (!s?.street) {
+        const all = await this.db.settings.toArray();
+        s =
+          all.find((rec: any) => currentAfm && rec.afm === currentAfm) ||
+          all.find((rec: any) => Boolean(rec.street)) ||
+          all[0] ||
+          null;
       }
     } catch (e) {
       console.warn('[populateIssuerLoadingAddress] Dexie read error:', e);
@@ -498,32 +502,10 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     const activeTenant = (this.auth as any).activeTenant?.() || (this.auth as any).currentTenant?.();
     const tenantFiscal = activeTenant?.fiscalIdentity || activeTenant?.settings || {};
 
-    const street = (
-      s?.street ||
-      s?.address?.street ||
-      tenantFiscal?.street ||
-      tenantFiscal?.address?.street ||
-      'ΒΑΡΔΟΥΝΙΩΤΗ'
-    ).trim();
-
-    const rawNum = s?.number || s?.address?.number || tenantFiscal?.number || tenantFiscal?.address?.number || '11';
-    const number = rawNum && rawNum !== '0' ? String(rawNum).trim() : '11';
-
-    const postalCode = (
-      s?.postalCode ||
-      s?.address?.postalCode ||
-      s?.zip ||
-      tenantFiscal?.postalCode ||
-      tenantFiscal?.zip ||
-      '11522'
-    ).trim();
-
-    const city = (
-      s?.city ||
-      s?.address?.city ||
-      tenantFiscal?.city ||
-      'ΑΘΗΝΑ'
-    ).trim();
+    const street = (s?.street || s?.address?.street || tenantFiscal?.street || '').trim();
+    const number = String(s?.number || s?.address?.number || tenantFiscal?.number || '').trim();
+    const postalCode = (s?.postalCode || s?.address?.postalCode || tenantFiscal?.postalCode || '').trim();
+    const city = (s?.city || s?.address?.city || tenantFiscal?.city || '').trim();
 
     const movementGroup = this.invoiceForm.get('movement');
     if (movementGroup?.disabled) {
@@ -536,6 +518,7 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
         { street, number, postalCode, city },
         { emitEvent: false }
       );
+      addressFromGroup.markAsDirty();
       addressFromGroup.updateValueAndValidity({ emitEvent: false });
     }
   }
