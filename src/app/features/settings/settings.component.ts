@@ -183,7 +183,7 @@ import { SubscriptionTier, FiscalEnvironment, SubscriptionStatus } from '@core/m
             </div>
           </div>
         } @else {
-          <!-- Clean Zero-State Notice for New Client -->
+          <!-- Clean Zero-State Notice for NEW Client -->
           <div class="p-5 bg-blue-50/70 border border-blue-200 rounded-2xl flex items-start gap-3 text-xs text-blue-900">
             <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-base shrink-0 shadow-xs">
               ℹ️
