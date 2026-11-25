@@ -1020,17 +1020,20 @@ export class InvoiceBuilderComponent implements OnInit, OnDestroy {
     }, 800);
   }
 
-  public async updateNextDocumentNumber(): Promise<void> {
+  public async updateNextDocumentNumber(force = false): Promise<void> {
     const tenantId = this.auth.currentTenantId();
     const series = this.invoiceForm.get('series')?.value;
     if (!tenantId || !series) return;
 
-    if (this.currentDraftId() && this.invoiceForm.get('documentNumber')?.dirty) {
+    if (!force && this.currentDraftId() && this.invoiceForm.get('documentNumber')?.dirty) {
       return;
     }
 
     const nextNumber = await this.db.getNextDocumentNumber(tenantId, series);
     this.invoiceForm.get('documentNumber')?.setValue(nextNumber, { emitEvent: false });
+    if (force) {
+      this.invoiceForm.get('documentNumber')?.markAsPristine();
+    }
   }
 
   private async persistDraft(): Promise<void> {

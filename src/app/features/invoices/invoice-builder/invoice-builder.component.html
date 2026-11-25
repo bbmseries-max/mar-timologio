@@ -496,16 +496,21 @@
   <div>
     <div class="flex items-center justify-between mb-1">
       <label class="block text-xs font-bold text-slate-700">Αριθμός</label>
-      <span class="text-[10px] text-blue-700 font-bold font-mono bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">Auto</span>
+      <button
+        type="button"
+        (click)="updateNextDocumentNumber(true)"
+        title="Αυτόματος υπολογισμός επόμενου αριθμού από το αρχείο"
+        class="text-[10px] text-blue-700 hover:bg-blue-100 font-bold font-mono bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200 cursor-pointer transition"
+      >
+        ↻ Auto
+      </button>
     </div>
     <input
       type="number"
+      min="1"
+      step="1"
       formControlName="documentNumber"
-      [readOnly]="true"
-      tabindex="-1"
-      (keydown)="$event.preventDefault()"
-      (wheel)="$event.preventDefault()"
-      class="w-full rounded-lg border-slate-200 text-sm px-3 py-2 border font-mono font-black bg-slate-100 text-slate-700 cursor-not-allowed select-none focus:outline-hidden focus:ring-0 shadow-2xs"
+      class="w-full rounded-lg border-slate-300 text-sm px-3 py-2 border font-mono font-black bg-white text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs"
     />
   </div>
 </div>
