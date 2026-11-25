@@ -31,16 +31,34 @@ export class MyDataService {
   private readonly auth = inject(AuthTenantService);
   private readonly aadeSerializer = inject(AadeSerializerService);
 
-  public readonly currentEnvironment = signal<FiscalEnvironment>('dev');
-
   private readonly workerUrl = 'https://gsis-lookup.bbmseries.workers.dev/send-invoice';
+
+  private readonly ENV_KEY = 'maranth_fiscal_env';
+
+  private readStoredEnv(): FiscalEnvironment {
+    try {
+      const saved = localStorage.getItem(this.ENV_KEY);
+      if (saved === 'production' || saved === 'dev' || saved === 'mock') {
+        return saved;
+      }
+    } catch {}
+    return 'dev';
+  }
+
+  public readonly currentEnvironment = signal<FiscalEnvironment>(this.readStoredEnv());
+
+  constructor() {
+    // Re-sync from Dexie once IndexedDB & AuthTenantService are ready
+    void this.loadTenantEnvironment();
+  }
 
   public async setEnvironment(env: FiscalEnvironment): Promise<void> {
     this.currentEnvironment.set(env);
+    try {
+      localStorage.setItem(this.ENV_KEY, env);
+    } catch {}
 
-    const tenantId = this.auth.currentTenantId();
-    if (!tenantId) return;
-
+    const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
     await this.db.saveSettingsForTenant(tenantId, {
       fiscalEnvironment: env,
       isProduction: env === 'production',
@@ -48,18 +66,29 @@ export class MyDataService {
   }
 
   public async loadTenantEnvironment(): Promise<void> {
-    const tenantId = this.auth.currentTenantId();
-    if (!tenantId) return;
+    const tenantId = this.auth.currentTenantId() || 'tenant_minimarket';
+    let settings = await this.db.getSettings(tenantId);
 
-    const settings = await this.db.getSettings(tenantId);
-    const env: FiscalEnvironment =
-      settings?.fiscalEnvironment === 'production' || settings?.isProduction
-        ? 'production'
-        : settings?.fiscalEnvironment === 'mock'
-          ? 'mock'
-          : 'dev';
+    // Fallback: if settings were saved under a different tenantId record, check active AFM or first record
+    if (!settings) {
+      const all = await this.db.settings.toArray();
+      const afm = this.auth.currentTenantAfm();
+      settings = (afm ? all.find((s: any) => s.afm === afm) : null) || all[0];
+    }
 
-    this.currentEnvironment.set(env);
+    if (settings?.fiscalEnvironment || typeof settings?.isProduction === 'boolean') {
+      const env: FiscalEnvironment =
+        settings.fiscalEnvironment === 'production' || settings.isProduction
+          ? 'production'
+          : settings.fiscalEnvironment === 'mock'
+            ? 'mock'
+            : 'dev';
+
+      this.currentEnvironment.set(env);
+      try {
+        localStorage.setItem(this.ENV_KEY, env);
+      } catch {}
+    }
   }
 
   /**
